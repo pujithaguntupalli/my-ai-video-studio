@@ -22,7 +22,11 @@ import {
   Clock,
   Layers,
   Image as ImageIcon,
-  Video as VideoIcon
+  Video as VideoIcon,
+  Maximize2,
+  Music,
+  Mic,
+  Subtitles
 } from 'lucide-react';
 
 const STYLES = [
@@ -49,14 +53,66 @@ const DURATIONS = [
 
 const SCENE_COUNTS = ['Auto', 1, 3, 5, 8, 12];
 
+const ASPECT_RATIOS = [
+  { label: '16:9 Landscape (YouTube)', value: '16:9', width: 960, height: 540 },
+  { label: '9:16 Vertical (Reels/Shorts)', value: '9:16', width: 540, height: 960 },
+  { label: '1:1 Square (Instagram)', value: '1:1', width: 720, height: 720 },
+  { label: '4:3 Classic Cinema', value: '4:3', width: 800, height: 600 }
+];
+
+const FRAME_RATES = [24, 30, 60];
+
+const RESOLUTIONS = [
+  { label: '720p HD', scale: 0.75 },
+  { label: '1080p Full HD', scale: 1.0 },
+  { label: '4K Ultra HD', scale: 1.5 }
+];
+
+const CAMERA_MOTIONS = [
+  'Auto / Dynamic',
+  'Slow Zoom In',
+  'Slow Zoom Out',
+  'Pan Left to Right',
+  'Pan Right to Left',
+  'Static Tripod'
+];
+
+const TRANSITIONS = ['Crossfade', 'Smooth Cut', 'Dip to Black', 'Slide Left'];
+
+const COLOR_FILTERS = [
+  { label: 'Natural', css: 'none' },
+  { label: 'Warm Golden', css: 'sepia(0.22) saturate(1.25) brightness(1.04)' },
+  { label: 'Cool Teal', css: 'hue-rotate(15deg) saturate(1.15) contrast(1.06)' },
+  { label: 'Vintage Film', css: 'sepia(0.35) contrast(1.12) brightness(0.95)' },
+  { label: 'Noir B&W', css: 'grayscale(1) contrast(1.25)' }
+];
+
+const SUBTITLE_STYLES = [
+  { id: 'cinematic-box', label: 'Cinematic Box' },
+  { id: 'yellow-classic', label: 'Classic Yellow' },
+  { id: 'neon-glow', label: 'Neon Pop' },
+  { id: 'minimal-shadow', label: 'Minimal Shadow' }
+];
+
+const SUBTITLE_POSITIONS = [
+  { id: 'bottom', label: 'Bottom' },
+  { id: 'center', label: 'Center' },
+  { id: 'top', label: 'Top' }
+];
+
+const AMBIENT_TRACKS = [
+  { id: 'none', label: 'No Background Music' },
+  { id: 'spring-breeze', label: 'Gentle Spring Breeze (Ambient Synth)' },
+  { id: 'cinematic-pad', label: 'Cinematic Emotional Pad' },
+  { id: 'lofi-calm', label: 'Calm Lo-Fi Piano Chords' }
+];
+
 export default function App() {
-  // Authentication State (Default PIN: 2026)
   const [isUnlocked, setIsUnlocked] = useState(() => localStorage.getItem('studio_unlocked') === 'true');
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [ownerPin, setOwnerPin] = useState(() => localStorage.getItem('studio_pin') || '2026');
 
-  // Navigation & Projects
   const [activeTab, setActiveTab] = useState('create');
   const [projectTitle, setProjectTitle] = useState('');
   const [prompt, setPrompt] = useState(
@@ -66,19 +122,33 @@ export default function App() {
   const [durationMode, setDurationMode] = useState('Manual');
   const [selectedDuration, setSelectedDuration] = useState(6);
   const [sceneCountMode, setSceneCountMode] = useState('Auto');
-  const [aspectRatio, setAspectRatio] = useState('16:9');
 
-  // AI Engine Settings
-  // 'built-in' = Self-contained HTML5 Canvas Illustrated Scene Engine (Zero-Key, Zero-CORS)
-  // 'pollinations' = gen.pollinations.ai Image/Video API (with Secret Key)
-  // 'fal-video' = Fal.ai Cloud Video Diffusion API (with Fal Key)
+  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [fps, setFps] = useState(24);
+  const [resolution, setResolution] = useState('1080p Full HD');
+  const [cameraMotion, setCameraMotion] = useState('Auto / Dynamic');
+  const [transitionType, setTransitionType] = useState('Crossfade');
+  const [colorFilter, setColorFilter] = useState('Natural');
+  const [letterboxBars, setLetterboxBars] = useState(false);
+
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [subtitleStyle, setSubtitleStyle] = useState('cinematic-box');
+  const [subtitlePosition, setSubtitlePosition] = useState('bottom');
+  const [subtitleSize, setSubtitleSize] = useState(22);
+
+  const [voiceoverEnabled, setVoiceoverEnabled] = useState(false);
+  const [voiceRate, setVoiceRate] = useState(1.0);
+  const [voicePitch, setVoicePitch] = useState(1.0);
+  const [selectedVoiceName, setSelectedVoiceName] = useState('');
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [ambientMusic, setAmbientMusic] = useState('spring-breeze');
+
   const [engineMode, setEngineMode] = useState(() => localStorage.getItem('studio_engine_mode') || 'built-in');
   const [pollinationsKey, setPollinationsKey] = useState(() => localStorage.getItem('studio_polli_key') || '');
   const [pollinationsModel, setPollinationsModel] = useState(() => localStorage.getItem('studio_polli_model') || 'flux');
   const [falApiKey, setFalApiKey] = useState(() => localStorage.getItem('studio_fal_key') || '');
   const [falModel, setFalModel] = useState(() => localStorage.getItem('studio_fal_model') || 'fal-ai/wan-t2v');
 
-  // Saved Characters & Projects
   const [characters, setCharacters] = useState(() => {
     try {
       return (
@@ -101,11 +171,9 @@ export default function App() {
     }
   });
 
-  // Scenes State
   const [scenes, setScenes] = useState([]);
   const [activeSceneIdx, setActiveSceneIdx] = useState(0);
 
-  // Generation & Playback State
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -114,13 +182,30 @@ export default function App() {
   const [renderedVideoUrl, setRenderedVideoUrl] = useState(null);
   const [renderExtension, setRenderExtension] = useState('webm');
 
-  // Refs for Canvas & MediaRecorder
   const canvasRef = useRef(null);
   const loadedImagesRef = useRef({});
   const animFrameRef = useRef(null);
   const playStartTimeRef = useRef(0);
+  const audioCtxRef = useRef(null);
+  const lastSpokenSceneRef = useRef(-1);
 
-  // Sync settings to localStorage
+  useEffect(() => {
+    const loadVoices = () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const list = window.speechSynthesis.getVoices();
+        setAvailableVoices(list);
+        if (list.length > 0 && !selectedVoiceName) {
+          const preferred = list.find((v) => /en/i.test(v.lang)) || list[0];
+          setSelectedVoiceName(preferred.name);
+        }
+      }
+    };
+    loadVoices();
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('studio_engine_mode', engineMode);
     localStorage.setItem('studio_polli_key', pollinationsKey);
@@ -131,21 +216,22 @@ export default function App() {
     localStorage.setItem('studio_projects', JSON.stringify(savedProjects));
   }, [engineMode, pollinationsKey, pollinationsModel, falApiKey, falModel, characters, savedProjects]);
 
-  // Build Pollinations gen.pollinations.ai URL (ONLY when user provides a valid secret key)
+  const currentAspectObj = ASPECT_RATIOS.find((a) => a.value === aspectRatio) || ASPECT_RATIOS[0];
+  const currentResObj = RESOLUTIONS.find((r) => r.label === resolution) || RESOLUTIONS[1];
+  const canvasWidth = Math.round(currentAspectObj.width * currentResObj.scale);
+  const canvasHeight = Math.round(currentAspectObj.height * currentResObj.scale);
+
   const buildPollinationsImageUrl = (scenePrompt, style, seed) => {
     const key = pollinationsKey.trim();
     if (!key) return null;
     const cleanPrompt = encodeURIComponent(
       `${scenePrompt}, ${style} style, masterpiece, highly detailed, cinematic lighting`
     );
-    const width = aspectRatio === '9:16' ? 576 : aspectRatio === '1:1' ? 768 : 1024;
-    const height = aspectRatio === '9:16' ? 1024 : aspectRatio === '1:1' ? 768 : 576;
     return `https://gen.pollinations.ai/image/${cleanPrompt}?model=${encodeURIComponent(
       pollinationsModel
-    )}&width=${width}&height=${height}&seed=${seed}&nologo=true&key=${encodeURIComponent(key)}`;
+    )}&width=${canvasWidth}&height=${canvasHeight}&seed=${seed}&nologo=true&key=${encodeURIComponent(key)}`;
   };
 
-  // Preload image via fetch -> Blob ObjectURL so Canvas NEVER gets CORS-tainted or black-screened
   const preloadSafeBlobImage = async (url) => {
     if (!url) return null;
     if (loadedImagesRef.current[url]) return loadedImagesRef.current[url];
@@ -169,7 +255,6 @@ export default function App() {
     }
   };
 
-  // Split prompt into scenes
   const parseScenesFromPrompt = (rawPrompt, style, durMode, manualSecs, countMode) => {
     let text = rawPrompt.trim();
     characters.forEach((c) => {
@@ -179,14 +264,15 @@ export default function App() {
       }
     });
 
-    const sentences = text
+    const rawSentences = rawPrompt
+      .trim()
       .split(/(?<=[.!?])\s+/)
       .map((s) => s.trim())
       .filter(Boolean);
 
     let targetCount = 1;
     if (countMode === 'Auto') {
-      targetCount = sentences.length > 1 ? Math.min(sentences.length, 8) : 1;
+      targetCount = rawSentences.length > 1 ? Math.min(rawSentences.length, 8) : 1;
     } else {
       targetCount = Number(countMode);
     }
@@ -196,13 +282,13 @@ export default function App() {
 
     const generated = [];
     for (let i = 0; i < targetCount; i++) {
-      const baseLine = sentences[i % sentences.length] || text;
+      const cleanSubtitle = rawSentences[i % rawSentences.length] || rawPrompt.trim();
       const cameraHint =
         i % 3 === 0 ? 'wide establishing shot' : i % 3 === 1 ? 'medium tracking shot' : 'close-up cinematic angle';
       const fullScenePrompt =
-        targetCount > 1 && sentences.length === 1
-          ? `${baseLine}, ${cameraHint}, ${style} style`
-          : `${baseLine}, ${style} style`;
+        targetCount > 1 && rawSentences.length === 1
+          ? `${cleanSubtitle}, ${cameraHint}, ${style} style`
+          : `${cleanSubtitle}, ${style} style`;
       const seed = Math.floor(Math.random() * 999999) + i * 17;
       const imageUrl =
         engineMode === 'pollinations' && pollinationsKey.trim()
@@ -213,6 +299,8 @@ export default function App() {
         id: Date.now() + i,
         duration: perSceneSec,
         prompt: fullScenePrompt,
+        subtitle: cleanSubtitle.charAt(0).toUpperCase() + cleanSubtitle.slice(1),
+        camera: cameraMotion,
         imageUrl,
         videoUrl: null,
         seed
@@ -221,7 +309,6 @@ export default function App() {
     return generated;
   };
 
-  // Initialize default scene on first load
   useEffect(() => {
     if (scenes.length === 0) {
       const initial = parseScenesFromPrompt(prompt, selectedStyle, durationMode, selectedDuration, sceneCountMode);
@@ -232,13 +319,65 @@ export default function App() {
     }
   }, []);
 
-  // Generate Scenes & Media
+  const startAmbientSynth = (trackId, destinationNode = null) => {
+    if (trackId === 'none') return null;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const ctx = audioCtxRef.current || new AudioContextClass();
+      audioCtxRef.current = ctx;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0.08;
+      masterGain.connect(ctx.destination);
+      if (destinationNode) masterGain.connect(destinationNode);
+
+      const freqs =
+        trackId === 'cinematic-pad'
+          ? [220, 261.63, 329.63]
+          : trackId === 'lofi-calm'
+          ? [174.61, 220, 261.63, 329.63]
+          : [261.63, 329.63, 392.0];
+
+      const oscs = freqs.map((f, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+        osc.frequency.value = f;
+        osc.connect(masterGain);
+        osc.start();
+        return osc;
+      });
+
+      return () => {
+        oscs.forEach((o) => {
+          try {
+            o.stop();
+            o.disconnect();
+          } catch {}
+        });
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const speakSceneSubtitle = (text) => {
+    if (!voiceoverEnabled || !text || typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    const chosen = availableVoices.find((v) => v.name === selectedVoiceName);
+    if (chosen) utter.voice = chosen;
+    utter.rate = voiceRate;
+    utter.pitch = voicePitch;
+    window.speechSynthesis.speak(utter);
+  };
+
   const handleGenerateScenes = async () => {
     if (!prompt.trim()) return;
     setIsGenerating(true);
     setIsPlaying(false);
     setRenderedVideoUrl(null);
-    setGenerationStatus('Building cinematic storyboard scenes...');
+    setGenerationStatus('Building cinematic storyboard & subtitle tracks...');
 
     const newScenes = parseScenesFromPrompt(prompt, selectedStyle, durationMode, selectedDuration, sceneCountMode);
     setScenes(newScenes);
@@ -281,12 +420,12 @@ export default function App() {
     } finally {
       setIsGenerating(false);
       setGenerationStatus('');
+      lastSpokenSceneRef.current = -1;
       setIsPlaying(true);
       playStartTimeRef.current = performance.now();
     }
   };
 
-  // Regenerate single scene
   const handleRegenerateScene = async (index) => {
     const updated = [...scenes];
     const newSeed = Math.floor(Math.random() * 999999);
@@ -303,15 +442,13 @@ export default function App() {
     }
   };
 
-  // Rich, Self-Contained Animated Scene Renderer (100% CORS-Safe, Never Black)
-  const drawBuiltInAnimatedScene = (ctx, width, height, scene, localTimeSec, sceneIndex) => {
+  const drawBuiltInAnimatedScene = (ctx, width, height, scene, localTimeSec) => {
     const pText = (scene?.prompt || prompt || '').toLowerCase();
     const isBlossom = /cherry|blossom|flower|petal|spring|sakura|park|garden/i.test(pText);
     const hasPerson = /girl|woman|boy|man|person|walk|character|hero|child/i.test(pText);
     const isNightOrCyber = /cyberpunk|night|neon|space|moon|dark|city/i.test(pText + ' ' + selectedStyle);
     const progress = Math.min(1, Math.max(0, localTimeSec / Math.max(1, scene?.duration || 6)));
 
-    // 1. Sky Gradient based on prompt/style
     const sky = ctx.createLinearGradient(0, 0, 0, height);
     if (isNightOrCyber) {
       sky.addColorStop(0, '#090d16');
@@ -329,19 +466,18 @@ export default function App() {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
 
-    // 2. Soft Sun / Moon Halo
-    const sunX = width * 0.68 - progress * 20;
+    const sunX = width * 0.68 - progress * (width * 0.02);
     const sunY = height * 0.28 + Math.sin(localTimeSec * 0.5) * 4;
-    const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 170);
+    const sunR = Math.min(width, height) * 0.3;
+    const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, sunR);
     sunGlow.addColorStop(0, 'rgba(255, 251, 235, 0.95)');
     sunGlow.addColorStop(0.35, isBlossom ? 'rgba(251, 207, 232, 0.55)' : 'rgba(251, 146, 60, 0.45)');
     sunGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = sunGlow;
     ctx.beginPath();
-    ctx.arc(sunX, sunY, 170, 0, Math.PI * 2);
+    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
     ctx.fill();
 
-    // 3. Distant Hills & Park Pathway
     ctx.fillStyle = isNightOrCyber ? '#111827' : isBlossom ? '#86efac' : '#1e293b';
     ctx.beginPath();
     ctx.moveTo(0, height);
@@ -352,11 +488,9 @@ export default function App() {
     ctx.closePath();
     ctx.fill();
 
-    // Foreground Grass / Ground
     ctx.fillStyle = isNightOrCyber ? '#0f172a' : isBlossom ? '#4ade80' : '#0f172a';
     ctx.fillRect(0, height * 0.72, width, height * 0.28);
 
-    // Winding Park Path
     ctx.fillStyle = isBlossom ? '#fef3c7' : '#334155';
     ctx.beginPath();
     ctx.moveTo(width * 0.15, height);
@@ -366,31 +500,29 @@ export default function App() {
     ctx.closePath();
     ctx.fill();
 
-    // 4. Cherry Blossom / Park Trees with Gentle Breeze Sway
     const sway = Math.sin(localTimeSec * 1.8) * 6;
+    const baseScale = height / 540;
     const drawTree = (tx, ty, scale, canopyColor) => {
+      const s = scale * baseScale;
       ctx.save();
       ctx.translate(tx, ty);
-      // Trunk
       ctx.fillStyle = '#4a2c2a';
-      ctx.fillRect(-8 * scale, -130 * scale, 16 * scale, 130 * scale);
-      // Branches
+      ctx.fillRect(-8 * s, -130 * s, 16 * s, 130 * s);
       ctx.strokeStyle = '#4a2c2a';
-      ctx.lineWidth = 6 * scale;
+      ctx.lineWidth = 6 * s;
       ctx.beginPath();
-      ctx.moveTo(0, -90 * scale);
-      ctx.lineTo(-42 * scale + sway * 0.4, -145 * scale);
-      ctx.moveTo(0, -100 * scale);
-      ctx.lineTo(45 * scale + sway * 0.4, -150 * scale);
+      ctx.moveTo(0, -90 * s);
+      ctx.lineTo(-42 * s + sway * 0.4, -145 * s);
+      ctx.moveTo(0, -100 * s);
+      ctx.lineTo(45 * s + sway * 0.4, -150 * s);
       ctx.stroke();
 
-      // Blossom Canopy Clusters
       const clusters = [
-        [-45 * scale + sway, -155 * scale, 52 * scale],
-        [42 * scale + sway, -150 * scale, 56 * scale],
-        [0 + sway, -185 * scale, 64 * scale],
-        [-20 * scale + sway, -135 * scale, 44 * scale],
-        [26 * scale + sway, -132 * scale, 46 * scale]
+        [-45 * s + sway, -155 * s, 52 * s],
+        [42 * s + sway, -150 * s, 56 * s],
+        [0 + sway, -185 * s, 64 * s],
+        [-20 * s + sway, -135 * s, 44 * s],
+        [26 * s + sway, -132 * s, 46 * s]
       ];
       clusters.forEach(([cx, cy, r], idx) => {
         ctx.fillStyle = idx % 2 === 0 ? canopyColor : '#fbcfe8';
@@ -408,34 +540,31 @@ export default function App() {
       drawTree(width * 0.48, height * 0.72, 0.65, leafColor);
     }
 
-    // 5. Animated Walking Character (when prompt describes a girl/person walking)
     if (hasPerson) {
       const walkX = width * 0.34 + progress * (width * 0.28);
-      const bobY = Math.abs(Math.sin(localTimeSec * 5.2)) * 5;
+      const bobY = Math.abs(Math.sin(localTimeSec * 5.2)) * 5 * baseScale;
       const walkY = height * 0.83 - bobY;
-      const stride = Math.sin(localTimeSec * 5.2) * 10;
+      const stride = Math.sin(localTimeSec * 5.2) * 10 * baseScale;
 
       ctx.save();
       ctx.translate(walkX, walkY);
+      ctx.scale(baseScale, baseScale);
 
-      // Shadow
       ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
       ctx.beginPath();
-      ctx.ellipse(0, 26 + bobY, 18, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 26, 18, 5, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Legs
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 5;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(-4, 2);
-      ctx.lineTo(-4 + stride, 24);
+      ctx.lineTo(-4 + stride / baseScale, 24);
       ctx.moveTo(4, 2);
-      ctx.lineTo(4 - stride, 24);
+      ctx.lineTo(4 - stride / baseScale, 24);
       ctx.stroke();
 
-      // Flowing Dress / Coat
       ctx.fillStyle = isBlossom ? '#ec4899' : '#6366f1';
       ctx.beginPath();
       ctx.moveTo(-9, -24);
@@ -445,7 +574,6 @@ export default function App() {
       ctx.closePath();
       ctx.fill();
 
-      // Head & Flowing Hair
       ctx.fillStyle = '#fde68a';
       ctx.beginPath();
       ctx.arc(0, -34, 9, 0, Math.PI * 2);
@@ -462,11 +590,10 @@ export default function App() {
       ctx.restore();
     }
 
-    // 6. Drifting Cherry Blossom Petals / Atmospheric Particles
     const particleCount = isBlossom ? 38 : 20;
     for (let p = 0; p < particleCount; p++) {
-      const speedY = 26 + (p % 5) * 10;
-      const driftX = 24 + (p % 4) * 12;
+      const speedY = (26 + (p % 5) * 10) * baseScale;
+      const driftX = (24 + (p % 4) * 12) * baseScale;
       const px = ((p * 97 + localTimeSec * driftX + Math.sin(localTimeSec * 1.7 + p) * 28) % (width + 40)) - 20;
       const py = ((p * 61 + localTimeSec * speedY) % (height + 40)) - 20;
       ctx.save();
@@ -474,55 +601,181 @@ export default function App() {
       ctx.rotate(localTimeSec * 1.6 + p);
       ctx.fillStyle = isBlossom ? 'rgba(255, 228, 238, 0.9)' : 'rgba(255, 255, 255, 0.35)';
       ctx.beginPath();
-      ctx.ellipse(0, 0, isBlossom ? 5.5 : 3, isBlossom ? 3.2 : 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(
+        0,
+        0,
+        (isBlossom ? 5.5 : 3) * baseScale,
+        (isBlossom ? 3.2 : 3) * baseScale,
+        0,
+        0,
+        Math.PI * 2
+      );
       ctx.fill();
       ctx.restore();
     }
+  };
 
-    // 7. Subtle Scene Badge
+  const drawSubtitlesOverlay = (ctx, width, height, text) => {
+    if (!subtitlesEnabled || !text || !text.trim()) return;
+
+    const scaledFontSize = Math.round(subtitleSize * (height / 540));
+    ctx.save();
+    ctx.font = `700 ${scaledFontSize}px Inter, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const maxWidth = width * 0.84;
+    const words = text.trim().split(/\s+/);
+    const lines = [];
+    let currentLine = words[0] || '';
+    for (let i = 1; i < words.length; i++) {
+      const testLine = `${currentLine} ${words[i]}`;
+      if (ctx.measureText(testLine).width < maxWidth) {
+        currentLine = testLine;
+      } else {
+        lines.push(currentLine);
+        currentLine = words[i];
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+
+    const lineHeight = scaledFontSize * 1.35;
+    const totalBlockHeight = lines.length * lineHeight;
+    const barOffset = letterboxBars ? height * 0.08 : 0;
+
+    let baseY = height - totalBlockHeight / 2 - 28 * (height / 540) - barOffset;
+    if (subtitlePosition === 'top') {
+      baseY = totalBlockHeight / 2 + 34 * (height / 540) + barOffset;
+    } else if (subtitlePosition === 'center') {
+      baseY = height / 2;
+    }
+
+    lines.forEach((line, idx) => {
+      const ly = baseY + (idx - (lines.length - 1) / 2) * lineHeight;
+      const metrics = ctx.measureText(line);
+      const padX = 16 * (height / 540);
+      const padY = 6 * (height / 540);
+
+      if (subtitleStyle === 'cinematic-box') {
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.76)';
+        ctx.beginPath();
+        ctx.roundRect(
+          width / 2 - metrics.width / 2 - padX,
+          ly - scaledFontSize / 2 - padY,
+          metrics.width + padX * 2,
+          scaledFontSize + padY * 2,
+          8
+        );
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(line, width / 2, ly);
+      } else if (subtitleStyle === 'yellow-classic') {
+        ctx.lineWidth = 4 * (height / 540);
+        ctx.strokeStyle = '#000000';
+        ctx.strokeText(line, width / 2, ly);
+        ctx.fillStyle = '#facc15';
+        ctx.fillText(line, width / 2, ly);
+      } else if (subtitleStyle === 'neon-glow') {
+        ctx.shadowColor = '#6366f1';
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = '#e0e7ff';
+        ctx.fillText(line, width / 2, ly);
+      } else {
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(line, width / 2, ly);
+      }
+    });
+
+    ctx.restore();
+  };
+
+  const drawFrameToCanvas = (ctx, width, height, scene, localTimeSec, sceneIndex) => {
+    ctx.save();
+    ctx.clearRect(0, 0, width, height);
+
+    const filterObj = COLOR_FILTERS.find((f) => f.label === colorFilter);
+    ctx.filter = filterObj ? filterObj.css : 'none';
+
+    const dur = Math.max(1, scene?.duration || 6);
+    const progress = Math.min(1, Math.max(0, localTimeSec / dur));
+    const activeMotion = scene?.camera && scene.camera !== 'Auto / Dynamic' ? scene.camera : cameraMotion;
+
+    ctx.save();
+    let scale = 1.0;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (activeMotion === 'Slow Zoom In' || (activeMotion === 'Auto / Dynamic' && sceneIndex % 2 === 0)) {
+      scale = 1.0 + progress * 0.1;
+    } else if (activeMotion === 'Slow Zoom Out') {
+      scale = 1.1 - progress * 0.1;
+    } else if (activeMotion === 'Pan Left to Right' || (activeMotion === 'Auto / Dynamic' && sceneIndex % 2 === 1)) {
+      scale = 1.08;
+      offsetX = (progress - 0.5) * width * 0.06;
+    } else if (activeMotion === 'Pan Right to Left') {
+      scale = 1.08;
+      offsetX = (0.5 - progress) * width * 0.06;
+    }
+
+    ctx.translate(width / 2 + offsetX, height / 2 + offsetY);
+    ctx.scale(scale, scale);
+    ctx.translate(-width / 2, -height / 2);
+
+    const img = scene?.imageUrl ? loadedImagesRef.current[scene.imageUrl] : null;
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, 0, 0, width, height);
+    } else {
+      drawBuiltInAnimatedScene(ctx, width, height, scene, localTimeSec);
+    }
+    ctx.restore();
+
+    ctx.filter = 'none';
+
+    if (localTimeSec < 0.45 && transitionType !== 'Smooth Cut') {
+      const tAlpha = 1 - localTimeSec / 0.45;
+      if (transitionType === 'Dip to Black' || transitionType === 'Crossfade') {
+        ctx.fillStyle = `rgba(9, 13, 22, ${tAlpha * 0.85})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+
+    if (letterboxBars) {
+      const barH = Math.round(height * 0.085);
+      ctx.fillStyle = '#05070c';
+      ctx.fillRect(0, 0, width, barH);
+      ctx.fillRect(0, height - barH, width, barH);
+    }
+
+    const hudY = letterboxBars ? Math.round(height * 0.085) + 12 : 14;
     ctx.fillStyle = 'rgba(15, 23, 42, 0.62)';
-    ctx.fillRect(16, 16, 200, 28);
+    ctx.fillRect(14, hudY, 220, 26);
     ctx.fillStyle = '#f8fafc';
     ctx.font = '600 11px Inter, system-ui, sans-serif';
-    ctx.fillText(`SCENE ${sceneIndex + 1} • ${selectedStyle.toUpperCase()}`, 26, 34);
+    ctx.fillText(`SCENE ${sceneIndex + 1} • ${aspectRatio} • ${fps} FPS`, 24, hudY + 17);
+
+    drawSubtitlesOverlay(ctx, width, height, scene?.subtitle || '');
+
+    ctx.restore();
   };
 
-  // Master Frame Drawer (Draws AI Image if loaded, otherwise Built-In Animated Scene)
-  const drawFrameToCanvas = (ctx, width, height, scene, localTimeSec, sceneIndex) => {
-    ctx.clearRect(0, 0, width, height);
-    const img = scene?.imageUrl ? loadedImagesRef.current[scene.imageUrl] : null;
-    const progress = Math.min(1, Math.max(0, localTimeSec / Math.max(1, scene?.duration || 6)));
-
-    if (img && img.complete && img.naturalWidth > 0) {
-      const zoom = 1.0 + progress * 0.12;
-      const panX = (sceneIndex % 2 === 0 ? -1 : 1) * progress * 24;
-      const panY = -progress * 12;
-      const drawW = width * zoom;
-      const drawH = height * zoom;
-      ctx.drawImage(img, (width - drawW) / 2 + panX, (height - drawH) / 2 + panY, drawW, drawH);
-
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.62)';
-      ctx.fillRect(16, 16, 200, 28);
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = '600 11px Inter, system-ui, sans-serif';
-      ctx.fillText(`SCENE ${sceneIndex + 1} • ${selectedStyle.toUpperCase()}`, 26, 34);
-    } else {
-      drawBuiltInAnimatedScene(ctx, width, height, scene, localTimeSec, sceneIndex);
-    }
-  };
-
-  // Animation loop for interactive preview
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || scenes.length === 0) return;
     const ctx = canvas.getContext('2d');
 
     if (!isPlaying) {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
       drawFrameToCanvas(ctx, canvas.width, canvas.height, scenes[activeSceneIdx] || scenes[0], 1.2, activeSceneIdx);
       return;
     }
 
     playStartTimeRef.current = performance.now();
+    lastSpokenSceneRef.current = -1;
+    const stopAudio = startAmbientSynth(ambientMusic);
     const totalDur = scenes.reduce((acc, s) => acc + (s.duration || 6), 0);
 
     const tick = (now) => {
@@ -549,6 +802,12 @@ export default function App() {
       if (currentIdx !== activeSceneIdx) {
         setActiveSceneIdx(currentIdx);
       }
+
+      if (lastSpokenSceneRef.current !== currentIdx) {
+        lastSpokenSceneRef.current = currentIdx;
+        speakSceneSubtitle(scenes[currentIdx]?.subtitle);
+      }
+
       drawFrameToCanvas(ctx, canvas.width, canvas.height, scenes[currentIdx], localSec, currentIdx);
       animFrameRef.current = requestAnimationFrame(tick);
     };
@@ -556,10 +815,29 @@ export default function App() {
     animFrameRef.current = requestAnimationFrame(tick);
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (stopAudio) stopAudio();
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
     };
-  }, [isPlaying, scenes, activeSceneIdx, selectedStyle]);
+  }, [
+    isPlaying,
+    scenes,
+    activeSceneIdx,
+    selectedStyle,
+    aspectRatio,
+    fps,
+    resolution,
+    cameraMotion,
+    transitionType,
+    colorFilter,
+    letterboxBars,
+    subtitlesEnabled,
+    subtitleStyle,
+    subtitlePosition,
+    subtitleSize
+  ]);
 
-  // Combine & Export Video File via MediaRecorder
   const handleCombineAndRender = async () => {
     const canvas = canvasRef.current;
     if (!canvas || scenes.length === 0) return;
@@ -576,7 +854,20 @@ export default function App() {
     }
 
     const ctx = canvas.getContext('2d');
-    const stream = canvas.captureStream(24);
+    const videoStream = canvas.captureStream(fps);
+
+    let stopExportAudio = null;
+    if (ambientMusic !== 'none') {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        const aCtx = audioCtxRef.current || new AudioContextClass();
+        audioCtxRef.current = aCtx;
+        const dest = aCtx.createMediaStreamDestination();
+        stopExportAudio = startAmbientSynth(ambientMusic, dest);
+        dest.stream.getAudioTracks().forEach((t) => videoStream.addTrack(t));
+      } catch {}
+    }
+
     const mimeType = MediaRecorder.isTypeSupported('video/mp4')
       ? 'video/mp4'
       : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
@@ -585,13 +876,14 @@ export default function App() {
 
     setRenderExtension(mimeType.includes('mp4') ? 'mp4' : 'webm');
 
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3500000 });
+    const recorder = new MediaRecorder(videoStream, { mimeType, videoBitsPerSecond: 4500000 });
     const chunks = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
 
     recorder.onstop = () => {
+      if (stopExportAudio) stopExportAudio();
       const blob = new Blob(chunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
       setRenderedVideoUrl(url);
@@ -636,7 +928,6 @@ export default function App() {
     requestAnimationFrame(recordStep);
   };
 
-  // Save current project locally
   const handleSaveProject = () => {
     const title = projectTitle.trim() || prompt.slice(0, 36) || 'Untitled Video';
     const item = {
@@ -644,6 +935,8 @@ export default function App() {
       title,
       prompt,
       style: selectedStyle,
+      aspectRatio,
+      fps,
       scenes,
       createdAt: new Date().toLocaleDateString()
     };
@@ -651,7 +944,6 @@ export default function App() {
     alert(`Saved "${title}" to My Projects!`);
   };
 
-  // PIN Lock Screen
   if (!isUnlocked) {
     return (
       <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex items-center justify-center p-4">
@@ -702,8 +994,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col md:flex-row font-sans">
-      {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-[#0f1524] border-b md:border-b-0 md:border-r border-slate-800/80 p-4 flex flex-col justify-between">
+      <aside className="w-full md:w-64 bg-[#0f1524] border-b md:border-b-0 md:border-r border-slate-800/80 p-4 flex flex-col justify-between shrink-0">
         <div>
           <div className="flex items-center gap-3 px-2 py-3 mb-6">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/30">
@@ -782,19 +1073,16 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 p-4 md:p-6 overflow-y-auto">
         {activeTab === 'create' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto">
-            {/* Left Column: Prompt & Controls */}
             <div className="lg:col-span-5 bg-[#111827] border border-slate-800/90 rounded-2xl p-5 space-y-5">
               <div>
                 <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <Wand2 className="w-4 h-4 text-indigo-400" /> Prompt & Generation Settings
+                  <Wand2 className="w-4 h-4 text-indigo-400" /> Prompt & Studio Controls
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Describe your scene in detail. Click{' '}
-                  <strong className="text-indigo-300">Generate AI Video & Scenes</strong> to animate and export.
+                  Configure your prompt, frame ratio, FPS, subtitles, voiceover, and visual style.
                 </p>
               </div>
 
@@ -807,14 +1095,13 @@ export default function App() {
               />
 
               <textarea
-                rows={4}
+                rows={3}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Describe what happens in your video..."
                 className="w-full bg-[#0b0f19] border border-slate-800 rounded-xl p-3.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
               />
 
-              {/* Visual Style */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-2">Visual Style</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -834,9 +1121,247 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Duration Mode */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                    <Maximize2 className="w-3.5 h-3.5" /> Frame & Camera Settings
+                  </span>
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={letterboxBars}
+                      onChange={(e) => setLetterboxBars(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                    />
+                    Cinema Bars
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1.5">Frame Aspect Ratio</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ASPECT_RATIOS.map((ar) => (
+                      <button
+                        key={ar.value}
+                        onClick={() => setAspectRatio(ar.value)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium border text-left transition ${
+                          aspectRatio === ar.value
+                            ? 'bg-indigo-600/25 border-indigo-500 text-indigo-200'
+                            : 'bg-[#111827] border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        {ar.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Resolution</label>
+                    <select
+                      value={resolution}
+                      onChange={(e) => setResolution(e.target.value)}
+                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                    >
+                      {RESOLUTIONS.map((r) => (
+                        <option key={r.label} value={r.label}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Frame Rate (FPS)</label>
+                    <div className="flex bg-[#111827] p-0.5 rounded-lg border border-slate-800">
+                      {FRAME_RATES.map((rate) => (
+                        <button
+                          key={rate}
+                          onClick={() => setFps(rate)}
+                          className={`flex-1 py-1 rounded-md text-xs font-medium transition ${
+                            fps === rate ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                          }`}
+                        >
+                          {rate}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Camera</label>
+                    <select
+                      value={cameraMotion}
+                      onChange={(e) => setCameraMotion(e.target.value)}
+                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                    >
+                      {CAMERA_MOTIONS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Transition</label>
+                    <select
+                      value={transitionType}
+                      onChange={(e) => setTransitionType(e.target.value)}
+                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                    >
+                      {TRANSITIONS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Color Filter</label>
+                    <select
+                      value={colorFilter}
+                      onChange={(e) => setColorFilter(e.target.value)}
+                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                    >
+                      {COLOR_FILTERS.map((cf) => (
+                        <option key={cf.label} value={cf.label}>
+                          {cf.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                    <Subtitles className="w-3.5 h-3.5" /> Subtitles & Captions
+                  </span>
+                  <button
+                    onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                      subtitlesEnabled
+                        ? 'bg-emerald-600/20 border border-emerald-500/40 text-emerald-300'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {subtitlesEnabled ? 'Subtitles ON' : 'Subtitles OFF'}
+                  </button>
+                </div>
+
+                {subtitlesEnabled && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Caption Style</label>
+                      <select
+                        value={subtitleStyle}
+                        onChange={(e) => setSubtitleStyle(e.target.value)}
+                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                      >
+                        {SUBTITLE_STYLES.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Position</label>
+                      <select
+                        value={subtitlePosition}
+                        onChange={(e) => setSubtitlePosition(e.target.value)}
+                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                      >
+                        {SUBTITLE_POSITIONS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Font Size ({subtitleSize}px)</label>
+                      <input
+                        type="range"
+                        min={14}
+                        max={36}
+                        value={subtitleSize}
+                        onChange={(e) => setSubtitleSize(Number(e.target.value))}
+                        className="w-full accent-indigo-500 mt-1.5"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                    <Mic className="w-3.5 h-3.5" /> Voiceover & Background Music
+                  </span>
+                  <button
+                    onClick={() => setVoiceoverEnabled(!voiceoverEnabled)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                      voiceoverEnabled
+                        ? 'bg-indigo-600/25 border border-indigo-500/40 text-indigo-200'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {voiceoverEnabled ? 'AI Narrator ON' : 'Narrator OFF'}
+                  </button>
+                </div>
+
+                {voiceoverEnabled && availableVoices.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={selectedVoiceName}
+                      onChange={(e) => setSelectedVoiceName(e.target.value)}
+                      className="bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                    >
+                      {availableVoices.map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                      <span>Speed {voiceRate}x</span>
+                      <input
+                        type="range"
+                        min={0.7}
+                        max={1.4}
+                        step={0.1}
+                        value={voiceRate}
+                        onChange={(e) => setVoiceRate(Number(e.target.value))}
+                        className="w-full accent-indigo-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1 flex items-center gap-1">
+                    <Music className="w-3 h-3" /> Background Ambient Track
+                  </label>
+                  <select
+                    value={ambientMusic}
+                    onChange={(e) => setAmbientMusic(e.target.value)}
+                    className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                  >
+                    {AMBIENT_TRACKS.map((tr) => (
+                      <option key={tr.id} value={tr.id}>
+                        {tr.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-indigo-400" /> Duration Mode
                   </span>
@@ -872,29 +1397,27 @@ export default function App() {
                     ))}
                   </div>
                 )}
-              </div>
 
-              {/* Scene Count */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-indigo-400" /> Scene Count
-                </span>
-                <div className="flex gap-1 bg-[#0b0f19] p-1 rounded-xl border border-slate-800">
-                  {SCENE_COUNTS.map((cnt) => (
-                    <button
-                      key={cnt}
-                      onClick={() => setSceneCountMode(cnt)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                        sceneCountMode === cnt ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {cnt}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" /> Scene Count
+                  </span>
+                  <div className="flex gap-1 bg-[#0b0f19] p-1 rounded-xl border border-slate-800">
+                    {SCENE_COUNTS.map((cnt) => (
+                      <button
+                        key={cnt}
+                        onClick={() => setSceneCountMode(cnt)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                          sceneCountMode === cnt ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {cnt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* Primary Generate Button */}
               <button
                 onClick={handleGenerateScenes}
                 disabled={isGenerating || !prompt.trim()}
@@ -914,9 +1437,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Right Column: Live Preview & Storyboard Editor */}
             <div className="lg:col-span-7 space-y-6">
-              {/* Video Preview Card */}
               <div className="bg-[#111827] border border-slate-800/90 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-slate-200 truncate max-w-md">
@@ -924,26 +1445,26 @@ export default function App() {
                     <span className="truncate">{prompt || 'Untitled Video'}</span>
                   </div>
                   <span className="text-xs text-slate-400 shrink-0">
-                    {scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'} • {totalDurationSeconds}s • 24 FPS
+                    {scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'} • {totalDurationSeconds}s • {aspectRatio}{' '}
+                    • {fps} FPS
                   </span>
                 </div>
 
-                {/* Canvas or Real Cloud Video Player */}
-                <div className="relative rounded-xl overflow-hidden bg-black border border-slate-800 aspect-video">
+                <div className="relative rounded-xl overflow-hidden bg-black border border-slate-800 flex items-center justify-center max-h-[520px]">
                   {scenes[activeSceneIdx]?.videoUrl ? (
                     <video
                       src={scenes[activeSceneIdx].videoUrl}
                       controls
                       autoPlay
                       loop
-                      className="w-full h-full object-cover"
+                      className="max-h-[520px] w-auto object-contain"
                     />
                   ) : (
                     <canvas
                       ref={canvasRef}
-                      width={960}
-                      height={540}
-                      className="w-full h-full object-cover block"
+                      width={canvasWidth}
+                      height={canvasHeight}
+                      className="max-h-[520px] w-auto max-w-full object-contain block"
                     />
                   )}
 
@@ -955,7 +1476,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Preview & Export Controls */}
                 <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
                   <div className="flex items-center gap-2">
                     <button
@@ -983,14 +1503,17 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Download Ready Banner */}
                 {renderedVideoUrl && (
                   <div className="mt-4 p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500/40 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                       <div>
-                        <p className="text-xs font-semibold text-emerald-200">Your video file is rendered and ready!</p>
-                        <p className="text-[11px] text-emerald-400/80">Click download to save it directly to your device.</p>
+                        <p className="text-xs font-semibold text-emerald-200">
+                          Your {resolution} ({aspectRatio}) video is ready!
+                        </p>
+                        <p className="text-[11px] text-emerald-400/80">
+                          Includes your frame ratio, subtitles, and audio track.
+                        </p>
                       </div>
                     </div>
                     <a
@@ -1006,10 +1529,9 @@ export default function App() {
                 )}
               </div>
 
-              {/* Scene Storyboard Editor */}
               <div className="bg-[#111827] border border-slate-800/90 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white">Scene Storyboard Editor</h3>
+                  <h3 className="text-sm font-bold text-white">Scene Storyboard & Subtitle Editor</h3>
                   <button
                     onClick={() => {
                       const seed = Math.floor(Math.random() * 999999);
@@ -1021,6 +1543,8 @@ export default function App() {
                         id: Date.now(),
                         duration: 6,
                         prompt: `${prompt}, ${selectedStyle} style`,
+                        subtitle: prompt,
+                        camera: cameraMotion,
                         imageUrl,
                         videoUrl: null,
                         seed
@@ -1039,13 +1563,13 @@ export default function App() {
                     <div
                       key={scene.id}
                       onClick={() => setActiveSceneIdx(idx)}
-                      className={`p-3.5 rounded-xl border transition cursor-pointer ${
+                      className={`p-3.5 rounded-xl border transition cursor-pointer space-y-2.5 ${
                         activeSceneIdx === idx
                           ? 'bg-[#161f33] border-indigo-500/70'
                           : 'bg-[#0b0f19] border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-indigo-400">
                           Scene {idx + 1} ({scene.duration}s)
                         </span>
@@ -1093,17 +1617,40 @@ export default function App() {
                         </div>
                       </div>
 
-                      <input
-                        type="text"
-                        value={scene.prompt}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const copy = [...scenes];
-                          copy[idx].prompt = e.target.value;
-                          setScenes(copy);
-                        }}
-                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                      />
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">
+                          Visual Prompt
+                        </label>
+                        <input
+                          type="text"
+                          value={scene.prompt}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const copy = [...scenes];
+                            copy[idx].prompt = e.target.value;
+                            setScenes(copy);
+                          }}
+                          className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
+                          <Subtitles className="w-3 h-3 text-indigo-400" /> Subtitle & Voiceover Text
+                        </label>
+                        <input
+                          type="text"
+                          value={scene.subtitle || ''}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const copy = [...scenes];
+                            copy[idx].subtitle = e.target.value;
+                            setScenes(copy);
+                          }}
+                          placeholder="Enter on-screen subtitle text for this scene..."
+                          className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-amber-200 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1112,7 +1659,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Characters Tab */}
         {activeTab === 'characters' && (
           <div className="max-w-3xl mx-auto bg-[#111827] border border-slate-800 rounded-2xl p-6 space-y-6">
             <div>
@@ -1174,7 +1720,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Projects Tab */}
         {activeTab === 'projects' && (
           <div className="max-w-4xl mx-auto bg-[#111827] border border-slate-800 rounded-2xl p-6 space-y-5">
             <h2 className="text-lg font-bold text-white">Saved Video Projects</h2>
@@ -1193,13 +1738,15 @@ export default function App() {
                     <p className="text-xs text-slate-400 line-clamp-2">{proj.prompt}</p>
                     <div className="flex items-center justify-between pt-2">
                       <span className="text-[11px] text-indigo-400">
-                        {proj.scenes.length} Scenes • {proj.style}
+                        {proj.scenes.length} Scenes • {proj.style} • {proj.aspectRatio || '16:9'}
                       </span>
                       <button
                         onClick={() => {
                           setProjectTitle(proj.title);
                           setPrompt(proj.prompt);
                           setSelectedStyle(proj.style);
+                          if (proj.aspectRatio) setAspectRatio(proj.aspectRatio);
+                          if (proj.fps) setFps(proj.fps);
                           setScenes(proj.scenes);
                           proj.scenes.forEach((s) => {
                             if (s.imageUrl) preloadSafeBlobImage(s.imageUrl);
@@ -1218,7 +1765,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Settings & AI Engine Tab */}
         {activeTab === 'settings' && (
           <div className="max-w-3xl mx-auto bg-[#111827] border border-slate-800 rounded-2xl p-6 space-y-6">
             <div>
