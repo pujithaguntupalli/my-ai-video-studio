@@ -27,7 +27,9 @@ import {
   Music,
   Mic,
   Subtitles,
-  Gauge
+  Gauge,
+  MessageSquare,
+  Volume2
 } from 'lucide-react';
 
 const STYLES = [
@@ -61,44 +63,7 @@ const ASPECT_RATIOS = [
   { label: '4:3 Classic Cinema', value: '4:3', width: 800, height: 600 }
 ];
 
-const FRAME_RATE_PRESETS = [
-  {
-    fps: 8,
-    label: '8 FPS',
-    badge: 'Anime / 3x Faster',
-    description: 'Stylized hand-drawn anime feel. Generates 3x fewer frames for fast rendering and low GPU/memory load.'
-  },
-  {
-    fps: 12,
-    label: '12 FPS',
-    badge: 'Stop-Motion / 2D',
-    description: 'Classic 2D animation & stop-motion cadence with crisp, expressive movement.'
-  },
-  {
-    fps: 16,
-    label: '16 FPS',
-    badge: 'Wan2.1 / CogVideoX Native',
-    description: 'Native output rate for Wan 2.1 & CogVideoX open-source AI video models.'
-  },
-  {
-    fps: 24,
-    label: '24 FPS',
-    badge: 'Cinematic Film',
-    description: 'Standard cinema film rate. Delivers natural motion and a movie-like look for storytelling.'
-  },
-  {
-    fps: 30,
-    label: '30 FPS',
-    badge: 'Smooth YouTube / Reels',
-    description: 'Smooth, crisp motion ideal for YouTube, 9:16 social media, and educational videos.'
-  },
-  {
-    fps: 60,
-    label: '60 FPS',
-    badge: 'Ultra-Fluid',
-    description: 'Maximum smoothness for fast camera pans and high-frame-rate playback.'
-  }
-];
+const FRAME_RATES = [8, 12, 16, 24, 30, 60];
 
 const RESOLUTIONS = [
   { label: '720p HD', scale: 0.75 },
@@ -139,10 +104,11 @@ const SUBTITLE_POSITIONS = [
 ];
 
 const AMBIENT_TRACKS = [
-  { id: 'none', label: 'No Background Music' },
+  { id: 'none', label: 'No Background Music (Muted)' },
   { id: 'spring-breeze', label: 'Gentle Spring Breeze (Ambient Synth)' },
   { id: 'cinematic-pad', label: 'Cinematic Emotional Pad' },
-  { id: 'lofi-calm', label: 'Calm Lo-Fi Piano Chords' }
+  { id: 'lofi-calm', label: 'Calm Lo-Fi Piano Chords' },
+  { id: 'cyber-pulse', label: 'Deep Sci-Fi Pulse' }
 ];
 
 export default function App() {
@@ -174,12 +140,26 @@ export default function App() {
   const [subtitlePosition, setSubtitlePosition] = useState('bottom');
   const [subtitleSize, setSubtitleSize] = useState(22);
 
-  const [voiceoverEnabled, setVoiceoverEnabled] = useState(false);
-  const [voiceRate, setVoiceRate] = useState(1.0);
-  const [voicePitch, setVoicePitch] = useState(1.0);
-  const [selectedVoiceName, setSelectedVoiceName] = useState('');
-  const [availableVoices, setAvailableVoices] = useState([]);
+  // 1. Voice Narration (Storyteller / Documentary Voice)
+  const [narrationEnabled, setNarrationEnabled] = useState(false);
+  const [narrationVoiceName, setNarrationVoiceName] = useState('');
+  const [narrationRate, setNarrationRate] = useState(1.0);
+  const [narrationPitch, setNarrationPitch] = useState(1.0);
+  const [narrationVolume, setNarrationVolume] = useState(1.0);
+
+  // 2. Character Voice (Dialogue / Acting Voice)
+  const [characterVoiceEnabled, setCharacterVoiceEnabled] = useState(false);
+  const [characterVoiceName, setCharacterVoiceName] = useState('');
+  const [characterRate, setCharacterRate] = useState(1.05);
+  const [characterPitch, setCharacterPitch] = useState(1.25);
+  const [characterVolume, setCharacterVolume] = useState(1.0);
+
+  // 3. Background Music (Ambient Score)
+  const [musicEnabled, setMusicEnabled] = useState(true);
   const [ambientMusic, setAmbientMusic] = useState('spring-breeze');
+  const [musicVolume, setMusicVolume] = useState(0.25);
+
+  const [availableVoices, setAvailableVoices] = useState([]);
 
   const [engineMode, setEngineMode] = useState(() => localStorage.getItem('studio_engine_mode') || 'built-in');
   const [pollinationsKey, setPollinationsKey] = useState(() => localStorage.getItem('studio_polli_key') || '');
@@ -191,7 +171,13 @@ export default function App() {
     try {
       return (
         JSON.parse(localStorage.getItem('studio_characters')) || [
-          { id: 1, name: 'Aoi', description: 'young anime girl with dark hair, pastel spring coat, gentle smile' }
+          {
+            id: 1,
+            name: 'Aoi',
+            description: 'young anime girl with dark hair, pastel spring coat, gentle smile',
+            voiceName: '',
+            pitch: 1.25
+          }
         ]
       );
     } catch {
@@ -200,6 +186,8 @@ export default function App() {
   });
   const [newCharName, setNewCharName] = useState('');
   const [newCharDesc, setNewCharDesc] = useState('');
+  const [newCharVoice, setNewCharVoice] = useState('');
+  const [newCharPitch, setNewCharPitch] = useState(1.2);
 
   const [savedProjects, setSavedProjects] = useState(() => {
     try {
@@ -232,9 +220,11 @@ export default function App() {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         const list = window.speechSynthesis.getVoices();
         setAvailableVoices(list);
-        if (list.length > 0 && !selectedVoiceName) {
-          const preferred = list.find((v) => /en/i.test(v.lang)) || list[0];
-          setSelectedVoiceName(preferred.name);
+        if (list.length > 0) {
+          const enVoices = list.filter((v) => /en/i.test(v.lang));
+          const pool = enVoices.length > 0 ? enVoices : list;
+          if (!narrationVoiceName) setNarrationVoiceName(pool[0].name);
+          if (!characterVoiceName) setCharacterVoiceName((pool[1] || pool[0]).name);
         }
       }
     };
@@ -256,7 +246,6 @@ export default function App() {
 
   const currentAspectObj = ASPECT_RATIOS.find((a) => a.value === aspectRatio) || ASPECT_RATIOS[0];
   const currentResObj = RESOLUTIONS.find((r) => r.label === resolution) || RESOLUTIONS[1];
-  const currentFpsPreset = FRAME_RATE_PRESETS.find((f) => f.fps === fps) || FRAME_RATE_PRESETS[3];
   const canvasWidth = Math.round(currentAspectObj.width * currentResObj.scale);
   const canvasHeight = Math.round(currentAspectObj.height * currentResObj.scale);
 
@@ -295,14 +284,6 @@ export default function App() {
   };
 
   const parseScenesFromPrompt = (rawPrompt, style, durMode, manualSecs, countMode) => {
-    let text = rawPrompt.trim();
-    characters.forEach((c) => {
-      const regex = new RegExp(`\\b${c.name}\\b`, 'gi');
-      if (regex.test(text)) {
-        text = `${text} (${c.name}: ${c.description})`;
-      }
-    });
-
     const rawSentences = rawPrompt
       .trim()
       .split(/(?<=[.!?])\s+/)
@@ -319,15 +300,18 @@ export default function App() {
     const totalSeconds = durMode === 'Auto' ? targetCount * 6 : manualSecs;
     const perSceneSec = Math.max(3, Math.round(totalSeconds / targetCount));
 
+    const matchedChar = characters.find((c) => new RegExp(`\\b${c.name}\\b`, 'i').test(rawPrompt));
+
     const generated = [];
     for (let i = 0; i < targetCount; i++) {
-      const cleanSubtitle = rawSentences[i % rawSentences.length] || rawPrompt.trim();
+      const cleanLine = rawSentences[i % rawSentences.length] || rawPrompt.trim();
+      const capitalizedLine = cleanLine.charAt(0).toUpperCase() + cleanLine.slice(1);
       const cameraHint =
         i % 3 === 0 ? 'wide establishing shot' : i % 3 === 1 ? 'medium tracking shot' : 'close-up cinematic angle';
       const fullScenePrompt =
         targetCount > 1 && rawSentences.length === 1
-          ? `${cleanSubtitle}, ${cameraHint}, ${style} style`
-          : `${cleanSubtitle}, ${style} style`;
+          ? `${cleanLine}, ${cameraHint}, ${style} style`
+          : `${cleanLine}, ${style} style`;
       const seed = Math.floor(Math.random() * 999999) + i * 17;
       const imageUrl =
         engineMode === 'pollinations' && pollinationsKey.trim()
@@ -338,7 +322,10 @@ export default function App() {
         id: Date.now() + i,
         duration: perSceneSec,
         prompt: fullScenePrompt,
-        subtitle: cleanSubtitle.charAt(0).toUpperCase() + cleanSubtitle.slice(1),
+        subtitle: capitalizedLine,
+        narrationText: capitalizedLine,
+        characterSpeaker: matchedChar ? matchedChar.name : characters[0]?.name || 'Character',
+        characterDialogue: '',
         camera: cameraMotion,
         imageUrl,
         videoUrl: null,
@@ -358,8 +345,9 @@ export default function App() {
     }
   }, []);
 
+  // Background Music Synthesizer (separate volume & enable controls)
   const startAmbientSynth = (trackId, destinationNode = null) => {
-    if (trackId === 'none') return null;
+    if (!musicEnabled || trackId === 'none') return null;
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       const ctx = audioCtxRef.current || new AudioContextClass();
@@ -367,7 +355,7 @@ export default function App() {
       if (ctx.state === 'suspended') ctx.resume();
 
       const masterGain = ctx.createGain();
-      masterGain.gain.value = 0.08;
+      masterGain.gain.value = Math.max(0, Math.min(0.35, musicVolume * 0.3));
       masterGain.connect(ctx.destination);
       if (destinationNode) masterGain.connect(destinationNode);
 
@@ -376,6 +364,8 @@ export default function App() {
           ? [220, 261.63, 329.63]
           : trackId === 'lofi-calm'
           ? [174.61, 220, 261.63, 329.63]
+          : trackId === 'cyber-pulse'
+          ? [110, 164.81, 220]
           : [261.63, 329.63, 392.0];
 
       const oscs = freqs.map((f, i) => {
@@ -400,15 +390,34 @@ export default function App() {
     }
   };
 
-  const speakSceneSubtitle = (text) => {
-    if (!voiceoverEnabled || !text || typeof window === 'undefined' || !window.speechSynthesis) return;
+  // Sequential Queue for Voice Narration + Character Voice
+  const playSceneVoices = (scene) => {
+    if (!scene || typeof window === 'undefined' || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    const chosen = availableVoices.find((v) => v.name === selectedVoiceName);
-    if (chosen) utter.voice = chosen;
-    utter.rate = voiceRate;
-    utter.pitch = voicePitch;
-    window.speechSynthesis.speak(utter);
+
+    const speakUtterance = (text, voiceName, rate, pitch, volume) => {
+      if (!text || !text.trim()) return;
+      const utter = new SpeechSynthesisUtterance(text.trim());
+      const chosen = availableVoices.find((v) => v.name === voiceName);
+      if (chosen) utter.voice = chosen;
+      utter.rate = rate;
+      utter.pitch = pitch;
+      utter.volume = Math.max(0, Math.min(1, volume));
+      window.speechSynthesis.speak(utter);
+    };
+
+    if (narrationEnabled && scene.narrationText?.trim()) {
+      speakUtterance(scene.narrationText, narrationVoiceName, narrationRate, narrationPitch, narrationVolume);
+    }
+
+    if (characterVoiceEnabled && scene.characterDialogue?.trim()) {
+      const charProfile = characters.find(
+        (c) => c.name.toLowerCase() === (scene.characterSpeaker || '').toLowerCase()
+      );
+      const voiceToUse = charProfile?.voiceName || characterVoiceName;
+      const pitchToUse = charProfile?.pitch || characterPitch;
+      speakUtterance(scene.characterDialogue, voiceToUse, characterRate, pitchToUse, characterVolume);
+    }
   };
 
   const handleGenerateScenes = async () => {
@@ -416,7 +425,7 @@ export default function App() {
     setIsGenerating(true);
     setIsPlaying(false);
     setRenderedVideoUrl(null);
-    setGenerationStatus(`Building storyboard (${fps} FPS • ${totalDurationSeconds * fps} total frames)...`);
+    setGenerationStatus('Building storyboard, narration & audio tracks...');
 
     const newScenes = parseScenesFromPrompt(prompt, selectedStyle, durationMode, selectedDuration, sceneCountMode);
     setScenes(newScenes);
@@ -481,7 +490,6 @@ export default function App() {
     }
   };
 
-  // Quantizes time to the selected FPS (8/12/16/24/30/60) so 8-12 FPS truly looks like stylized anime/stop-motion!
   const drawBuiltInAnimatedScene = (ctx, width, height, scene, rawLocalTimeSec) => {
     const quantizedTimeSec = Math.floor(rawLocalTimeSec * fps) / fps;
     const pText = (scene?.prompt || prompt || '').toLowerCase();
@@ -657,8 +665,13 @@ export default function App() {
     }
   };
 
-  const drawSubtitlesOverlay = (ctx, width, height, text) => {
-    if (!subtitlesEnabled || !text || !text.trim()) return;
+  const drawSubtitlesOverlay = (ctx, width, height, scene) => {
+    if (!subtitlesEnabled || !scene) return;
+    const displayCaption =
+      characterVoiceEnabled && scene.characterDialogue?.trim()
+        ? `${scene.characterSpeaker || 'Character'}: "${scene.characterDialogue.trim()}"`
+        : scene.subtitle || scene.narrationText || '';
+    if (!displayCaption.trim()) return;
 
     const scaledFontSize = Math.round(subtitleSize * (height / 540));
     ctx.save();
@@ -667,7 +680,7 @@ export default function App() {
     ctx.textBaseline = 'middle';
 
     const maxWidth = width * 0.84;
-    const words = text.trim().split(/\s+/);
+    const words = displayCaption.trim().split(/\s+/);
     const lines = [];
     let currentLine = words[0] || '';
     for (let i = 1; i < words.length; i++) {
@@ -803,7 +816,7 @@ export default function App() {
       hudY + 17
     );
 
-    drawSubtitlesOverlay(ctx, width, height, scene?.subtitle || '');
+    drawSubtitlesOverlay(ctx, width, height, scene);
 
     ctx.restore();
   };
@@ -853,7 +866,7 @@ export default function App() {
 
       if (lastSpokenSceneRef.current !== currentIdx) {
         lastSpokenSceneRef.current = currentIdx;
-        speakSceneSubtitle(scenes[currentIdx]?.subtitle);
+        playSceneVoices(scenes[currentIdx]);
       }
 
       drawFrameToCanvas(ctx, canvas.width, canvas.height, scenes[currentIdx], localSec, currentIdx);
@@ -905,7 +918,7 @@ export default function App() {
     const videoStream = canvas.captureStream(fps);
 
     let stopExportAudio = null;
-    if (ambientMusic !== 'none') {
+    if (musicEnabled && ambientMusic !== 'none') {
       try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         const aCtx = audioCtxRef.current || new AudioContextClass();
@@ -1040,7 +1053,6 @@ export default function App() {
 
   const totalDurationSeconds = scenes.reduce((acc, s) => acc + (s.duration || 6), 0);
   const totalFramesCount = totalDurationSeconds * fps;
-  const speedMultiplier = (24 / fps).toFixed(1);
 
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col md:flex-row font-sans">
@@ -1132,7 +1144,7 @@ export default function App() {
                   <Wand2 className="w-4 h-4 text-indigo-400" /> Prompt & Studio Controls
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Configure your prompt, frame rate, aspect ratio, subtitles, and visual style.
+                  Configure visual style, frame rate, subtitles, voice narration, character voice, and background music.
                 </p>
               </div>
 
@@ -1172,64 +1184,31 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Frame Rate (FPS), Frame Budget & Style Guide */}
-              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
-                    <Gauge className="w-3.5 h-3.5" /> Frame Rate (FPS) & Render Load
-                  </span>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                    {totalFramesCount} frames ({totalDurationSeconds}s × {fps})
-                  </span>
-                </div>
-
-                {/* FPS Presets Grid */}
-                <div className="grid grid-cols-3 gap-1.5">
-                  {FRAME_RATE_PRESETS.map((preset) => (
-                    <button
-                      key={preset.fps}
-                      onClick={() => setFps(preset.fps)}
-                      className={`p-2 rounded-lg border text-left transition ${
-                        fps === preset.fps
-                          ? 'bg-indigo-600/25 border-indigo-500 text-white'
-                          : 'bg-[#111827] border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-bold">{preset.label}</div>
-                      <div className="text-[10px] text-indigo-300/90 truncate">{preset.badge}</div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Live Frame Calculation & Model Compatibility Callout */}
-                <div className="p-2.5 rounded-lg bg-[#111827] border border-slate-800/90 text-[11px] space-y-1">
-                  <p className="text-slate-200 font-medium">{currentFpsPreset.description}</p>
-                  <p className="text-slate-400">
-                    <span className="text-emerald-400 font-semibold">Frame Budget:</span>{' '}
-                    {totalDurationSeconds}s × {fps} FPS ={' '}
-                    <span className="text-white font-mono">{totalFramesCount} individual frames</span>
-                    {fps < 24 && (
-                      <span className="text-amber-300"> ({speedMultiplier}× faster render & lower GPU/RAM load)</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {/* Frame Aspect Ratio, Resolution & Camera Settings */}
+              {/* Frame Rate (FPS) & Frame Settings */}
               <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
-                    <Maximize2 className="w-3.5 h-3.5" /> Frame Dimensions & Camera
+                    <Gauge className="w-3.5 h-3.5" /> Frame Rate (FPS) & Dimensions
                   </span>
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={letterboxBars}
-                      onChange={(e) => setLetterboxBars(e.target.checked)}
-                      className="rounded border-slate-700 bg-slate-900 text-indigo-600"
-                    />
-                    Cinema Bars
-                  </label>
+                  <span className="text-[11px] font-mono text-indigo-300">
+                    {totalFramesCount} frames
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-6 gap-1">
+                  {FRAME_RATES.map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => setFps(rate)}
+                      className={`py-1.5 rounded-lg text-xs font-semibold border transition ${
+                        fps === rate
+                          ? 'bg-indigo-600 border-indigo-500 text-white'
+                          : 'bg-[#111827] border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      {rate}
+                    </button>
+                  ))}
                 </div>
 
                 <div>
@@ -1282,27 +1261,13 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Scene Transition</label>
-                    <select
-                      value={transitionType}
-                      onChange={(e) => setTransitionType(e.target.value)}
-                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
-                    >
-                      {TRANSITIONS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="grid grid-cols-2 gap-2 items-center">
                   <div>
                     <label className="block text-[11px] text-slate-400 mb-1">Color Filter</label>
                     <select
                       value={colorFilter}
                       onChange={(e) => setColorFilter(e.target.value)}
-                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-200"
                     >
                       {COLOR_FILTERS.map((cf) => (
                         <option key={cf.label} value={cf.label}>
@@ -1311,10 +1276,21 @@ export default function App() {
                       ))}
                     </select>
                   </div>
+                  <div className="pt-4">
+                    <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={letterboxBars}
+                        onChange={(e) => setLetterboxBars(e.target.checked)}
+                        className="rounded border-slate-700 bg-slate-900 text-indigo-600"
+                      />
+                      Cinema Letterbox Bars
+                    </label>
+                  </div>
                 </div>
               </div>
 
-              {/* Subtitles & Captions Settings */}
+              {/* Subtitles & Captions */}
               <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
@@ -1335,7 +1311,7 @@ export default function App() {
                 {subtitlesEnabled && (
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Caption Style</label>
+                      <label className="block text-[11px] text-slate-400 mb-1">Style</label>
                       <select
                         value={subtitleStyle}
                         onChange={(e) => setSubtitleStyle(e.target.value)}
@@ -1363,7 +1339,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Font Size ({subtitleSize}px)</label>
+                      <label className="block text-[11px] text-slate-400 mb-1">Size ({subtitleSize}px)</label>
                       <input
                         type="range"
                         min={14}
@@ -1377,68 +1353,224 @@ export default function App() {
                 )}
               </div>
 
-              {/* Voiceover & Background Audio Settings */}
+              {/* SEPARATE OPTION 1: VOICE NARRATION */}
               <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
-                    <Mic className="w-3.5 h-3.5" /> Voiceover & Background Music
-                  </span>
+                  <div>
+                    <span className="text-xs font-semibold text-sky-300 flex items-center gap-1.5">
+                      <Mic className="w-3.5 h-3.5" /> 1. Voice Narration (Storyteller)
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Reads the scene narration & story descriptions aloud.
+                    </p>
+                  </div>
                   <button
-                    onClick={() => setVoiceoverEnabled(!voiceoverEnabled)}
+                    onClick={() => setNarrationEnabled(!narrationEnabled)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
-                      voiceoverEnabled
-                        ? 'bg-indigo-600/25 border border-indigo-500/40 text-indigo-200'
+                      narrationEnabled
+                        ? 'bg-sky-600/25 border border-sky-500/40 text-sky-200'
                         : 'bg-slate-800 text-slate-400'
                     }`}
                   >
-                    {voiceoverEnabled ? 'AI Narrator ON' : 'Narrator OFF'}
+                    {narrationEnabled ? 'Narration ON' : 'Narration OFF'}
                   </button>
                 </div>
 
-                {voiceoverEnabled && availableVoices.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={selectedVoiceName}
-                      onChange={(e) => setSelectedVoiceName(e.target.value)}
-                      className="bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
-                    >
-                      {availableVoices.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <span>Speed {voiceRate}x</span>
+                {narrationEnabled && (
+                  <div className="space-y-2.5 pt-1 border-t border-slate-800/80">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Narrator Voice</label>
+                      <select
+                        value={narrationVoiceName}
+                        onChange={(e) => setNarrationVoiceName(e.target.value)}
+                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                      >
+                        {availableVoices.map((v) => (
+                          <option key={v.name} value={v.name}>
+                            {v.name} ({v.lang})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-400">
+                      <div>
+                        <span>Speed: {narrationRate}x</span>
+                        <input
+                          type="range"
+                          min={0.7}
+                          max={1.4}
+                          step={0.05}
+                          value={narrationRate}
+                          onChange={(e) => setNarrationRate(Number(e.target.value))}
+                          className="w-full accent-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <span>Pitch: {narrationPitch}</span>
+                        <input
+                          type="range"
+                          min={0.7}
+                          max={1.3}
+                          step={0.05}
+                          value={narrationPitch}
+                          onChange={(e) => setNarrationPitch(Number(e.target.value))}
+                          className="w-full accent-sky-500"
+                        />
+                      </div>
+                      <div>
+                        <span>Vol: {Math.round(narrationVolume * 100)}%</span>
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={1.0}
+                          step={0.05}
+                          value={narrationVolume}
+                          onChange={(e) => setNarrationVolume(Number(e.target.value))}
+                          className="w-full accent-sky-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SEPARATE OPTION 2: CHARACTER VOICE */}
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold text-pink-300 flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" /> 2. Character Voice (Dialogue)
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Distinct acting voice & pitch for character dialogue lines.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setCharacterVoiceEnabled(!characterVoiceEnabled)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                      characterVoiceEnabled
+                        ? 'bg-pink-600/25 border border-pink-500/40 text-pink-200'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {characterVoiceEnabled ? 'Char Voice ON' : 'Char Voice OFF'}
+                  </button>
+                </div>
+
+                {characterVoiceEnabled && (
+                  <div className="space-y-2.5 pt-1 border-t border-slate-800/80">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Default Character Voice</label>
+                      <select
+                        value={characterVoiceName}
+                        onChange={(e) => setCharacterVoiceName(e.target.value)}
+                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                      >
+                        {availableVoices.map((v) => (
+                          <option key={v.name} value={v.name}>
+                            {v.name} ({v.lang})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-400">
+                      <div>
+                        <span>Speed: {characterRate}x</span>
+                        <input
+                          type="range"
+                          min={0.7}
+                          max={1.4}
+                          step={0.05}
+                          value={characterRate}
+                          onChange={(e) => setCharacterRate(Number(e.target.value))}
+                          className="w-full accent-pink-500"
+                        />
+                      </div>
+                      <div>
+                        <span>Pitch: {characterPitch}</span>
+                        <input
+                          type="range"
+                          min={0.7}
+                          max={1.5}
+                          step={0.05}
+                          value={characterPitch}
+                          onChange={(e) => setCharacterPitch(Number(e.target.value))}
+                          className="w-full accent-pink-500"
+                        />
+                      </div>
+                      <div>
+                        <span>Vol: {Math.round(characterVolume * 100)}%</span>
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={1.0}
+                          step={0.05}
+                          value={characterVolume}
+                          onChange={(e) => setCharacterVolume(Number(e.target.value))}
+                          className="w-full accent-pink-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SEPARATE OPTION 3: BACKGROUND MUSIC */}
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
+                      <Music className="w-3.5 h-3.5" /> 3. Background Music (Score)
+                    </span>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Ambient soundtrack mixed into preview and video export.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setMusicEnabled(!musicEnabled)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                      musicEnabled
+                        ? 'bg-emerald-600/25 border border-emerald-500/40 text-emerald-200'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {musicEnabled ? 'Music ON' : 'Music OFF'}
+                  </button>
+                </div>
+
+                {musicEnabled && (
+                  <div className="space-y-2.5 pt-1 border-t border-slate-800/80">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Music Track</label>
+                      <select
+                        value={ambientMusic}
+                        onChange={(e) => setAmbientMusic(e.target.value)}
+                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                      >
+                        {AMBIENT_TRACKS.map((tr) => (
+                          <option key={tr.id} value={tr.id}>
+                            {tr.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                      <span className="flex items-center gap-1 shrink-0">
+                        <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> Music Volume:{' '}
+                        {Math.round(musicVolume * 100)}%
+                      </span>
                       <input
                         type="range"
-                        min={0.7}
-                        max={1.4}
-                        step={0.1}
-                        value={voiceRate}
-                        onChange={(e) => setVoiceRate(Number(e.target.value))}
-                        className="w-full accent-indigo-500"
+                        min={0.05}
+                        max={1.0}
+                        step={0.05}
+                        value={musicVolume}
+                        onChange={(e) => setMusicVolume(Number(e.target.value))}
+                        className="w-full accent-emerald-500"
                       />
                     </div>
                   </div>
                 )}
-
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1 flex items-center gap-1">
-                    <Music className="w-3 h-3" /> Background Ambient Track
-                  </label>
-                  <select
-                    value={ambientMusic}
-                    onChange={(e) => setAmbientMusic(e.target.value)}
-                    className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
-                  >
-                    {AMBIENT_TRACKS.map((tr) => (
-                      <option key={tr.id} value={tr.id}>
-                        {tr.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               {/* Duration Mode & Scene Count */}
@@ -1527,8 +1659,7 @@ export default function App() {
                     <span className="truncate">{prompt || 'Untitled Video'}</span>
                   </div>
                   <span className="text-xs text-slate-400 shrink-0">
-                    {scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'} • {totalDurationSeconds}s • {fps} FPS (
-                    {totalFramesCount} frames)
+                    {scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'} • {totalDurationSeconds}s • {fps} FPS
                   </span>
                 </div>
 
@@ -1594,7 +1725,7 @@ export default function App() {
                           Your {resolution} ({aspectRatio} • {fps} FPS) video is ready!
                         </p>
                         <p className="text-[11px] text-emerald-400/80">
-                          Rendered {totalFramesCount} frames with subtitles & audio track.
+                          Rendered {totalFramesCount} frames with subtitles & audio tracks.
                         </p>
                       </div>
                     </div>
@@ -1611,9 +1742,12 @@ export default function App() {
                 )}
               </div>
 
+              {/* Scene Storyboard with Separate Narration, Character Dialogue & Subtitles */}
               <div className="bg-[#111827] border border-slate-800/90 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white">Scene Storyboard & Subtitle Editor</h3>
+                  <h3 className="text-sm font-bold text-white">
+                    Scene Storyboard, Narration & Character Dialogue
+                  </h3>
                   <button
                     onClick={() => {
                       const seed = Math.floor(Math.random() * 999999);
@@ -1626,6 +1760,9 @@ export default function App() {
                         duration: 6,
                         prompt: `${prompt}, ${selectedStyle} style`,
                         subtitle: prompt,
+                        narrationText: prompt,
+                        characterSpeaker: characters[0]?.name || 'Character',
+                        characterDialogue: '',
                         camera: cameraMotion,
                         imageUrl,
                         videoUrl: null,
@@ -1716,22 +1853,60 @@ export default function App() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
-                          <Subtitles className="w-3 h-3 text-indigo-400" /> Subtitle & Voiceover Text
-                        </label>
-                        <input
-                          type="text"
-                          value={scene.subtitle || ''}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const copy = [...scenes];
-                            copy[idx].subtitle = e.target.value;
-                            setScenes(copy);
-                          }}
-                          placeholder="Enter on-screen subtitle text for this scene..."
-                          className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-amber-200 focus:outline-none focus:border-indigo-500"
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-wider text-sky-400 mb-1 flex items-center gap-1">
+                            <Mic className="w-3 h-3" /> Narrator Script & Subtitles
+                          </label>
+                          <input
+                            type="text"
+                            value={scene.narrationText ?? scene.subtitle ?? ''}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const copy = [...scenes];
+                              copy[idx].narrationText = e.target.value;
+                              copy[idx].subtitle = e.target.value;
+                              setScenes(copy);
+                            }}
+                            placeholder="Storyteller voice narration..."
+                            className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-sky-200 focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-wider text-pink-400 mb-1 flex items-center gap-1">
+                            <MessageSquare className="w-3 h-3" /> Character Dialogue ({scene.characterSpeaker || 'Character'})
+                          </label>
+                          <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={scene.characterSpeaker || ''}
+                              onChange={(e) => {
+                                const copy = [...scenes];
+                                copy[idx].characterSpeaker = e.target.value;
+                                setScenes(copy);
+                              }}
+                              className="bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-pink-300"
+                            >
+                              {characters.map((c) => (
+                                <option key={c.id} value={c.name}>
+                                  {c.name}
+                                </option>
+                              ))}
+                              <option value="Character">Character</option>
+                            </select>
+                            <input
+                              type="text"
+                              value={scene.characterDialogue || ''}
+                              onChange={(e) => {
+                                const copy = [...scenes];
+                                copy[idx].characterDialogue = e.target.value;
+                                setScenes(copy);
+                              }}
+                              placeholder="What the character says..."
+                              className="flex-1 bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-pink-200 focus:outline-none focus:border-pink-500"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1744,12 +1919,12 @@ export default function App() {
         {activeTab === 'characters' && (
           <div className="max-w-3xl mx-auto bg-[#111827] border border-slate-800 rounded-2xl p-6 space-y-6">
             <div>
-              <h2 className="text-lg font-bold text-white">Consistent Character Library</h2>
+              <h2 className="text-lg font-bold text-white">Consistent Character & Voice Library</h2>
               <p className="text-xs text-slate-400 mt-1">
-                Mention any saved character name in your prompt and their visual traits are automatically injected into every scene.
+                Assign each character their appearance and their own dedicated Character Voice & Pitch.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input
                 type="text"
                 value={newCharName}
@@ -1762,15 +1937,45 @@ export default function App() {
                 value={newCharDesc}
                 onChange={(e) => setNewCharDesc(e.target.value)}
                 placeholder="Appearance (e.g., silver hair, blue kimono)"
-                className="md:col-span-2 bg-[#0b0f19] border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white"
+                className="bg-[#0b0f19] border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white"
               />
+              <select
+                value={newCharVoice}
+                onChange={(e) => setNewCharVoice(e.target.value)}
+                className="bg-[#0b0f19] border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200"
+              >
+                <option value="">Use Default Character Voice</option>
+                {availableVoices.map((v) => (
+                  <option key={v.name} value={v.name}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-3 bg-[#0b0f19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-300">
+                <span>Voice Pitch: {newCharPitch}</span>
+                <input
+                  type="range"
+                  min={0.7}
+                  max={1.5}
+                  step={0.05}
+                  value={newCharPitch}
+                  onChange={(e) => setNewCharPitch(Number(e.target.value))}
+                  className="flex-1 accent-pink-500"
+                />
+              </div>
             </div>
             <button
               onClick={() => {
                 if (!newCharName.trim() || !newCharDesc.trim()) return;
                 setCharacters([
                   ...characters,
-                  { id: Date.now(), name: newCharName.trim(), description: newCharDesc.trim() }
+                  {
+                    id: Date.now(),
+                    name: newCharName.trim(),
+                    description: newCharDesc.trim(),
+                    voiceName: newCharVoice,
+                    pitch: newCharPitch
+                  }
                 ]);
                 setNewCharName('');
                 setNewCharDesc('');
@@ -1787,7 +1992,12 @@ export default function App() {
                   className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 flex items-center justify-between"
                 >
                   <div>
-                    <p className="text-sm font-semibold text-indigo-300">{c.name}</p>
+                    <p className="text-sm font-semibold text-indigo-300">
+                      {c.name}{' '}
+                      <span className="text-[11px] font-normal text-pink-300">
+                        • Voice: {c.voiceName || 'Default'} (Pitch {c.pitch || 1.2})
+                      </span>
+                    </p>
                     <p className="text-xs text-slate-400">{c.description}</p>
                   </div>
                   <button
