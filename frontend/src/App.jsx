@@ -26,7 +26,8 @@ import {
   Maximize2,
   Music,
   Mic,
-  Subtitles
+  Subtitles,
+  Gauge
 } from 'lucide-react';
 
 const STYLES = [
@@ -60,7 +61,44 @@ const ASPECT_RATIOS = [
   { label: '4:3 Classic Cinema', value: '4:3', width: 800, height: 600 }
 ];
 
-const FRAME_RATES = [24, 30, 60];
+const FRAME_RATE_PRESETS = [
+  {
+    fps: 8,
+    label: '8 FPS',
+    badge: 'Anime / 3x Faster',
+    description: 'Stylized hand-drawn anime feel. Generates 3x fewer frames for fast rendering and low GPU/memory load.'
+  },
+  {
+    fps: 12,
+    label: '12 FPS',
+    badge: 'Stop-Motion / 2D',
+    description: 'Classic 2D animation & stop-motion cadence with crisp, expressive movement.'
+  },
+  {
+    fps: 16,
+    label: '16 FPS',
+    badge: 'Wan2.1 / CogVideoX Native',
+    description: 'Native output rate for Wan 2.1 & CogVideoX open-source AI video models.'
+  },
+  {
+    fps: 24,
+    label: '24 FPS',
+    badge: 'Cinematic Film',
+    description: 'Standard cinema film rate. Delivers natural motion and a movie-like look for storytelling.'
+  },
+  {
+    fps: 30,
+    label: '30 FPS',
+    badge: 'Smooth YouTube / Reels',
+    description: 'Smooth, crisp motion ideal for YouTube, 9:16 social media, and educational videos.'
+  },
+  {
+    fps: 60,
+    label: '60 FPS',
+    badge: 'Ultra-Fluid',
+    description: 'Maximum smoothness for fast camera pans and high-frame-rate playback.'
+  }
+];
 
 const RESOLUTIONS = [
   { label: '720p HD', scale: 0.75 },
@@ -218,6 +256,7 @@ export default function App() {
 
   const currentAspectObj = ASPECT_RATIOS.find((a) => a.value === aspectRatio) || ASPECT_RATIOS[0];
   const currentResObj = RESOLUTIONS.find((r) => r.label === resolution) || RESOLUTIONS[1];
+  const currentFpsPreset = FRAME_RATE_PRESETS.find((f) => f.fps === fps) || FRAME_RATE_PRESETS[3];
   const canvasWidth = Math.round(currentAspectObj.width * currentResObj.scale);
   const canvasHeight = Math.round(currentAspectObj.height * currentResObj.scale);
 
@@ -377,7 +416,7 @@ export default function App() {
     setIsGenerating(true);
     setIsPlaying(false);
     setRenderedVideoUrl(null);
-    setGenerationStatus('Building cinematic storyboard & subtitle tracks...');
+    setGenerationStatus(`Building storyboard (${fps} FPS • ${totalDurationSeconds * fps} total frames)...`);
 
     const newScenes = parseScenesFromPrompt(prompt, selectedStyle, durationMode, selectedDuration, sceneCountMode);
     setScenes(newScenes);
@@ -442,12 +481,14 @@ export default function App() {
     }
   };
 
-  const drawBuiltInAnimatedScene = (ctx, width, height, scene, localTimeSec) => {
+  // Quantizes time to the selected FPS (8/12/16/24/30/60) so 8-12 FPS truly looks like stylized anime/stop-motion!
+  const drawBuiltInAnimatedScene = (ctx, width, height, scene, rawLocalTimeSec) => {
+    const quantizedTimeSec = Math.floor(rawLocalTimeSec * fps) / fps;
     const pText = (scene?.prompt || prompt || '').toLowerCase();
     const isBlossom = /cherry|blossom|flower|petal|spring|sakura|park|garden/i.test(pText);
     const hasPerson = /girl|woman|boy|man|person|walk|character|hero|child/i.test(pText);
     const isNightOrCyber = /cyberpunk|night|neon|space|moon|dark|city/i.test(pText + ' ' + selectedStyle);
-    const progress = Math.min(1, Math.max(0, localTimeSec / Math.max(1, scene?.duration || 6)));
+    const progress = Math.min(1, Math.max(0, quantizedTimeSec / Math.max(1, scene?.duration || 6)));
 
     const sky = ctx.createLinearGradient(0, 0, 0, height);
     if (isNightOrCyber) {
@@ -467,7 +508,7 @@ export default function App() {
     ctx.fillRect(0, 0, width, height);
 
     const sunX = width * 0.68 - progress * (width * 0.02);
-    const sunY = height * 0.28 + Math.sin(localTimeSec * 0.5) * 4;
+    const sunY = height * 0.28 + Math.sin(quantizedTimeSec * 0.5) * 4;
     const sunR = Math.min(width, height) * 0.3;
     const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, sunR);
     sunGlow.addColorStop(0, 'rgba(255, 251, 235, 0.95)');
@@ -500,7 +541,7 @@ export default function App() {
     ctx.closePath();
     ctx.fill();
 
-    const sway = Math.sin(localTimeSec * 1.8) * 6;
+    const sway = Math.sin(quantizedTimeSec * 1.8) * 6;
     const baseScale = height / 540;
     const drawTree = (tx, ty, scale, canopyColor) => {
       const s = scale * baseScale;
@@ -542,9 +583,9 @@ export default function App() {
 
     if (hasPerson) {
       const walkX = width * 0.34 + progress * (width * 0.28);
-      const bobY = Math.abs(Math.sin(localTimeSec * 5.2)) * 5 * baseScale;
+      const bobY = Math.abs(Math.sin(quantizedTimeSec * 5.2)) * 5 * baseScale;
       const walkY = height * 0.83 - bobY;
-      const stride = Math.sin(localTimeSec * 5.2) * 10 * baseScale;
+      const stride = Math.sin(quantizedTimeSec * 5.2) * 10 * baseScale;
 
       ctx.save();
       ctx.translate(walkX, walkY);
@@ -594,11 +635,12 @@ export default function App() {
     for (let p = 0; p < particleCount; p++) {
       const speedY = (26 + (p % 5) * 10) * baseScale;
       const driftX = (24 + (p % 4) * 12) * baseScale;
-      const px = ((p * 97 + localTimeSec * driftX + Math.sin(localTimeSec * 1.7 + p) * 28) % (width + 40)) - 20;
-      const py = ((p * 61 + localTimeSec * speedY) % (height + 40)) - 20;
+      const px =
+        ((p * 97 + quantizedTimeSec * driftX + Math.sin(quantizedTimeSec * 1.7 + p) * 28) % (width + 40)) - 20;
+      const py = ((p * 61 + quantizedTimeSec * speedY) % (height + 40)) - 20;
       ctx.save();
       ctx.translate(px, py);
-      ctx.rotate(localTimeSec * 1.6 + p);
+      ctx.rotate(quantizedTimeSec * 1.6 + p);
       ctx.fillStyle = isBlossom ? 'rgba(255, 228, 238, 0.9)' : 'rgba(255, 255, 255, 0.35)';
       ctx.beginPath();
       ctx.ellipse(
@@ -699,7 +741,8 @@ export default function App() {
     ctx.filter = filterObj ? filterObj.css : 'none';
 
     const dur = Math.max(1, scene?.duration || 6);
-    const progress = Math.min(1, Math.max(0, localTimeSec / dur));
+    const quantizedLocalSec = Math.floor(localTimeSec * fps) / fps;
+    const progress = Math.min(1, Math.max(0, quantizedLocalSec / dur));
     const activeMotion = scene?.camera && scene.camera !== 'Auto / Dynamic' ? scene.camera : cameraMotion;
 
     ctx.save();
@@ -749,11 +792,16 @@ export default function App() {
     }
 
     const hudY = letterboxBars ? Math.round(height * 0.085) + 12 : 14;
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.62)';
-    ctx.fillRect(14, hudY, 220, 26);
+    const currentFrameNum = Math.min(dur * fps, Math.floor(localTimeSec * fps) + 1);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+    ctx.fillRect(14, hudY, 275, 26);
     ctx.fillStyle = '#f8fafc';
     ctx.font = '600 11px Inter, system-ui, sans-serif';
-    ctx.fillText(`SCENE ${sceneIndex + 1} • ${aspectRatio} • ${fps} FPS`, 24, hudY + 17);
+    ctx.fillText(
+      `SCENE ${sceneIndex + 1} • ${fps} FPS • FRAME ${currentFrameNum}/${dur * fps}`,
+      24,
+      hudY + 17
+    );
 
     drawSubtitlesOverlay(ctx, width, height, scene?.subtitle || '');
 
@@ -991,6 +1039,8 @@ export default function App() {
   }
 
   const totalDurationSeconds = scenes.reduce((acc, s) => acc + (s.duration || 6), 0);
+  const totalFramesCount = totalDurationSeconds * fps;
+  const speedMultiplier = (24 / fps).toFixed(1);
 
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col md:flex-row font-sans">
@@ -1082,7 +1132,7 @@ export default function App() {
                   <Wand2 className="w-4 h-4 text-indigo-400" /> Prompt & Studio Controls
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Configure your prompt, frame ratio, FPS, subtitles, voiceover, and visual style.
+                  Configure your prompt, frame rate, aspect ratio, subtitles, and visual style.
                 </p>
               </div>
 
@@ -1102,6 +1152,7 @@ export default function App() {
                 className="w-full bg-[#0b0f19] border border-slate-800 rounded-xl p-3.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
               />
 
+              {/* Visual Style */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-2">Visual Style</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -1121,10 +1172,54 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Frame Rate (FPS), Frame Budget & Style Guide */}
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                    <Gauge className="w-3.5 h-3.5" /> Frame Rate (FPS) & Render Load
+                  </span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                    {totalFramesCount} frames ({totalDurationSeconds}s × {fps})
+                  </span>
+                </div>
+
+                {/* FPS Presets Grid */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {FRAME_RATE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.fps}
+                      onClick={() => setFps(preset.fps)}
+                      className={`p-2 rounded-lg border text-left transition ${
+                        fps === preset.fps
+                          ? 'bg-indigo-600/25 border-indigo-500 text-white'
+                          : 'bg-[#111827] border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{preset.label}</div>
+                      <div className="text-[10px] text-indigo-300/90 truncate">{preset.badge}</div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Live Frame Calculation & Model Compatibility Callout */}
+                <div className="p-2.5 rounded-lg bg-[#111827] border border-slate-800/90 text-[11px] space-y-1">
+                  <p className="text-slate-200 font-medium">{currentFpsPreset.description}</p>
+                  <p className="text-slate-400">
+                    <span className="text-emerald-400 font-semibold">Frame Budget:</span>{' '}
+                    {totalDurationSeconds}s × {fps} FPS ={' '}
+                    <span className="text-white font-mono">{totalFramesCount} individual frames</span>
+                    {fps < 24 && (
+                      <span className="text-amber-300"> ({speedMultiplier}× faster render & lower GPU/RAM load)</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Frame Aspect Ratio, Resolution & Camera Settings */}
               <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
-                    <Maximize2 className="w-3.5 h-3.5" /> Frame & Camera Settings
+                    <Maximize2 className="w-3.5 h-3.5" /> Frame Dimensions & Camera
                   </span>
                   <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
                     <input
@@ -1172,30 +1267,11 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Frame Rate (FPS)</label>
-                    <div className="flex bg-[#111827] p-0.5 rounded-lg border border-slate-800">
-                      {FRAME_RATES.map((rate) => (
-                        <button
-                          key={rate}
-                          onClick={() => setFps(rate)}
-                          className={`flex-1 py-1 rounded-md text-xs font-medium transition ${
-                            fps === rate ? 'bg-indigo-600 text-white' : 'text-slate-400'
-                          }`}
-                        >
-                          {rate}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Camera</label>
+                    <label className="block text-[11px] text-slate-400 mb-1">Camera Motion</label>
                     <select
                       value={cameraMotion}
                       onChange={(e) => setCameraMotion(e.target.value)}
-                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-200"
+                      className="w-full bg-[#111827] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
                     >
                       {CAMERA_MOTIONS.map((m) => (
                         <option key={m} value={m}>
@@ -1204,8 +1280,11 @@ export default function App() {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Transition</label>
+                    <label className="block text-[11px] text-slate-400 mb-1">Scene Transition</label>
                     <select
                       value={transitionType}
                       onChange={(e) => setTransitionType(e.target.value)}
@@ -1235,6 +1314,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Subtitles & Captions Settings */}
               <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
@@ -1297,6 +1377,7 @@ export default function App() {
                 )}
               </div>
 
+              {/* Voiceover & Background Audio Settings */}
               <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
@@ -1360,6 +1441,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Duration Mode & Scene Count */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
@@ -1445,8 +1527,8 @@ export default function App() {
                     <span className="truncate">{prompt || 'Untitled Video'}</span>
                   </div>
                   <span className="text-xs text-slate-400 shrink-0">
-                    {scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'} • {totalDurationSeconds}s • {aspectRatio}{' '}
-                    • {fps} FPS
+                    {scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'} • {totalDurationSeconds}s • {fps} FPS (
+                    {totalFramesCount} frames)
                   </span>
                 </div>
 
@@ -1499,7 +1581,7 @@ export default function App() {
                     className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition"
                   >
                     <VideoIcon className="w-3.5 h-3.5" />
-                    {isRendering ? `Rendering Video (${renderProgress}%)...` : 'Combine & Render Video'}
+                    {isRendering ? `Rendering ${fps} FPS (${renderProgress}%)...` : 'Combine & Render Video'}
                   </button>
                 </div>
 
@@ -1509,10 +1591,10 @@ export default function App() {
                       <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                       <div>
                         <p className="text-xs font-semibold text-emerald-200">
-                          Your {resolution} ({aspectRatio}) video is ready!
+                          Your {resolution} ({aspectRatio} • {fps} FPS) video is ready!
                         </p>
                         <p className="text-[11px] text-emerald-400/80">
-                          Includes your frame ratio, subtitles, and audio track.
+                          Rendered {totalFramesCount} frames with subtitles & audio track.
                         </p>
                       </div>
                     </div>
@@ -1571,7 +1653,7 @@ export default function App() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-indigo-400">
-                          Scene {idx + 1} ({scene.duration}s)
+                          Scene {idx + 1} ({scene.duration}s • {scene.duration * fps} frames)
                         </span>
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
@@ -1738,7 +1820,7 @@ export default function App() {
                     <p className="text-xs text-slate-400 line-clamp-2">{proj.prompt}</p>
                     <div className="flex items-center justify-between pt-2">
                       <span className="text-[11px] text-indigo-400">
-                        {proj.scenes.length} Scenes • {proj.style} • {proj.aspectRatio || '16:9'}
+                        {proj.scenes.length} Scenes • {proj.style} • {proj.fps || 24} FPS
                       </span>
                       <button
                         onClick={() => {
@@ -1787,7 +1869,7 @@ export default function App() {
                   <Sparkles className="w-4 h-4 text-indigo-400" /> Built-In Animated Studio
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  100% browser-rendered animated scenes with walking character, trees & petals. Zero-key & never black-screens.
+                  100% browser-rendered animated scenes with walking character, trees & petals. Renders smoothly at 8–60 FPS.
                 </p>
               </button>
 
@@ -1872,7 +1954,7 @@ export default function App() {
                     onChange={(e) => setFalModel(e.target.value)}
                     className="w-full bg-[#111827] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white"
                   >
-                    <option value="fal-ai/wan-t2v">Wan 2.1 Text-to-Video</option>
+                    <option value="fal-ai/wan-t2v">Wan 2.1 Text-to-Video (16 FPS Native)</option>
                     <option value="fal-ai/minimax-video">MiniMax Hailuo Video-01</option>
                     <option value="fal-ai/luma-dream-machine">Luma Dream Machine</option>
                   </select>
