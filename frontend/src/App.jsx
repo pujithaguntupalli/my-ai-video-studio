@@ -16,7 +16,6 @@ import {
   Lock,
   Unlock,
   CheckCircle2,
-  AlertCircle,
   Key,
   Cpu,
   Wand2,
@@ -60,25 +59,33 @@ export default function App() {
   // Navigation & Projects
   const [activeTab, setActiveTab] = useState('create');
   const [projectTitle, setProjectTitle] = useState('');
-  const [prompt, setPrompt] = useState('a girl is walking in a park full of cherry blossom trees. the flowers are falling due to fine breeze');
+  const [prompt, setPrompt] = useState(
+    'a girl is walking in a park full of cherry blossom trees. the flowers are falling due to fine breeze'
+  );
   const [selectedStyle, setSelectedStyle] = useState('Anime');
   const [durationMode, setDurationMode] = useState('Manual');
   const [selectedDuration, setSelectedDuration] = useState(6);
   const [sceneCountMode, setSceneCountMode] = useState('Auto');
   const [aspectRatio, setAspectRatio] = useState('16:9');
 
-  // AI Engine Settings (Cloud Video API + Free AI Image Storyboard + Procedural Fallback)
-  const [engineMode, setEngineMode] = useState(() => localStorage.getItem('studio_engine_mode') || 'ai-storyboard');
+  // AI Engine Settings
+  // 'built-in' = Self-contained HTML5 Canvas Illustrated Scene Engine (Zero-Key, Zero-CORS)
+  // 'pollinations' = gen.pollinations.ai Image/Video API (with Secret Key)
+  // 'fal-video' = Fal.ai Cloud Video Diffusion API (with Fal Key)
+  const [engineMode, setEngineMode] = useState(() => localStorage.getItem('studio_engine_mode') || 'built-in');
+  const [pollinationsKey, setPollinationsKey] = useState(() => localStorage.getItem('studio_polli_key') || '');
+  const [pollinationsModel, setPollinationsModel] = useState(() => localStorage.getItem('studio_polli_model') || 'flux');
   const [falApiKey, setFalApiKey] = useState(() => localStorage.getItem('studio_fal_key') || '');
   const [falModel, setFalModel] = useState(() => localStorage.getItem('studio_fal_model') || 'fal-ai/wan-t2v');
-  const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem('studio_backend_url') || 'http://localhost:8000');
 
   // Saved Characters & Projects
   const [characters, setCharacters] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('studio_characters')) || [
-        { id: 1, name: 'Aoi', description: 'young anime girl with dark hair, pastel spring coat, gentle smile' }
-      ];
+      return (
+        JSON.parse(localStorage.getItem('studio_characters')) || [
+          { id: 1, name: 'Aoi', description: 'young anime girl with dark hair, pastel spring coat, gentle smile' }
+        ]
+      );
     } catch {
       return [];
     }
@@ -116,39 +123,53 @@ export default function App() {
   // Sync settings to localStorage
   useEffect(() => {
     localStorage.setItem('studio_engine_mode', engineMode);
+    localStorage.setItem('studio_polli_key', pollinationsKey);
+    localStorage.setItem('studio_polli_model', pollinationsModel);
     localStorage.setItem('studio_fal_key', falApiKey);
     localStorage.setItem('studio_fal_model', falModel);
-    localStorage.setItem('studio_backend_url', backendUrl);
     localStorage.setItem('studio_characters', JSON.stringify(characters));
     localStorage.setItem('studio_projects', JSON.stringify(savedProjects));
-  }, [engineMode, falApiKey, falModel, backendUrl, characters, savedProjects]);
+  }, [engineMode, pollinationsKey, pollinationsModel, falApiKey, falModel, characters, savedProjects]);
 
-  // Build Pollinations AI Image URL for a scene prompt
-  const buildAiImageUrl = (scenePrompt, style, seed) => {
-    const cleanPrompt = encodeURIComponent(`${scenePrompt}, ${style} style, masterpiece, highly detailed, cinematic lighting, 8k`);
-    const dims = aspectRatio === '9:16' ? 'width=576&height=1024' : aspectRatio === '1:1' ? 'width=768&height=768' : 'width=1024&height=576';
-    return `https://image.pollinations.ai/prompt/${cleanPrompt}?${dims}&seed=${seed}&nologo=true`;
+  // Build Pollinations gen.pollinations.ai URL (ONLY when user provides a valid secret key)
+  const buildPollinationsImageUrl = (scenePrompt, style, seed) => {
+    const key = pollinationsKey.trim();
+    if (!key) return null;
+    const cleanPrompt = encodeURIComponent(
+      `${scenePrompt}, ${style} style, masterpiece, highly detailed, cinematic lighting`
+    );
+    const width = aspectRatio === '9:16' ? 576 : aspectRatio === '1:1' ? 768 : 1024;
+    const height = aspectRatio === '9:16' ? 1024 : aspectRatio === '1:1' ? 768 : 576;
+    return `https://gen.pollinations.ai/image/${cleanPrompt}?model=${encodeURIComponent(
+      pollinationsModel
+    )}&width=${width}&height=${height}&seed=${seed}&nologo=true&key=${encodeURIComponent(key)}`;
   };
 
-  // Preload image into memory with CORS support for Canvas recording
-  const preloadImage = (url) => {
-    return new Promise((resolve) => {
-      if (!url) return resolve(null);
-      if (loadedImagesRef.current[url]) return resolve(loadedImagesRef.current[url]);
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        loadedImagesRef.current[url] = img;
-        resolve(img);
-      };
-      img.onerror = () => {
-        resolve(null);
-      };
-      img.src = url;
-    });
+  // Preload image via fetch -> Blob ObjectURL so Canvas NEVER gets CORS-tainted or black-screened
+  const preloadSafeBlobImage = async (url) => {
+    if (!url) return null;
+    if (loadedImagesRef.current[url]) return loadedImagesRef.current[url];
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      if (!blob.type.startsWith('image/')) return null;
+      const objUrl = URL.createObjectURL(blob);
+      return await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          loadedImagesRef.current[url] = img;
+          resolve(img);
+        };
+        img.onerror = () => resolve(null);
+        img.src = objUrl;
+      });
+    } catch {
+      return null;
+    }
   };
 
-  // Split prompt into scenes automatically or by user count
+  // Split prompt into scenes
   const parseScenesFromPrompt = (rawPrompt, style, durMode, manualSecs, countMode) => {
     let text = rawPrompt.trim();
     characters.forEach((c) => {
@@ -183,11 +204,16 @@ export default function App() {
           ? `${baseLine}, ${cameraHint}, ${style} style`
           : `${baseLine}, ${style} style`;
       const seed = Math.floor(Math.random() * 999999) + i * 17;
+      const imageUrl =
+        engineMode === 'pollinations' && pollinationsKey.trim()
+          ? buildPollinationsImageUrl(fullScenePrompt, style, seed)
+          : null;
+
       generated.push({
         id: Date.now() + i,
         duration: perSceneSec,
         prompt: fullScenePrompt,
-        imageUrl: buildAiImageUrl(fullScenePrompt, style, seed),
+        imageUrl,
         videoUrl: null,
         seed
       });
@@ -201,18 +227,18 @@ export default function App() {
       const initial = parseScenesFromPrompt(prompt, selectedStyle, durationMode, selectedDuration, sceneCountMode);
       setScenes(initial);
       if (initial[0]?.imageUrl) {
-        preloadImage(initial[0].imageUrl);
+        preloadSafeBlobImage(initial[0].imageUrl);
       }
     }
   }, []);
 
-  // Generate Scenes & Media (AI Storyboard Image or Fal.ai Cloud Video)
+  // Generate Scenes & Media
   const handleGenerateScenes = async () => {
     if (!prompt.trim()) return;
     setIsGenerating(true);
     setIsPlaying(false);
     setRenderedVideoUrl(null);
-    setGenerationStatus('Breaking prompt into cinematic storyboard scenes...');
+    setGenerationStatus('Building cinematic storyboard scenes...');
 
     const newScenes = parseScenesFromPrompt(prompt, selectedStyle, durationMode, selectedDuration, sceneCountMode);
     setScenes(newScenes);
@@ -220,9 +246,8 @@ export default function App() {
 
     try {
       if (engineMode === 'fal-video' && falApiKey.trim()) {
-        // Real Cloud AI Video Generation via Fal.ai Queue/Sync REST API
         for (let i = 0; i < newScenes.length; i++) {
-          setGenerationStatus(`Generating real AI video clip ${i + 1} of ${newScenes.length} via Fal.ai...`);
+          setGenerationStatus(`Generating AI video clip ${i + 1} of ${newScenes.length} via Fal.ai...`);
           try {
             const resp = await fetch(`https://fal.run/${falModel}`, {
               method: 'POST',
@@ -241,20 +266,16 @@ export default function App() {
               if (vid) {
                 newScenes[i].videoUrl = vid;
                 setScenes([...newScenes]);
-                continue;
               }
             }
           } catch (err) {
-            console.warn('Fal.ai request fallback to AI image:', err);
+            console.warn('Fal.ai request fallback to built-in canvas:', err);
           }
-          // Fallback to AI illustration if API call fails or credits exhausted
-          await preloadImage(newScenes[i].imageUrl);
         }
-      } else {
-        // Free AI-Illustrated Storyboard Mode (Pollinations FLUX/Diffusion Image + Ken Burns Camera Motion)
+      } else if (engineMode === 'pollinations' && pollinationsKey.trim()) {
         for (let i = 0; i < newScenes.length; i++) {
           setGenerationStatus(`Rendering AI artwork for Scene ${i + 1} of ${newScenes.length}...`);
-          await preloadImage(newScenes[i].imageUrl);
+          await preloadSafeBlobImage(newScenes[i].imageUrl);
         }
       }
     } finally {
@@ -265,103 +286,229 @@ export default function App() {
     }
   };
 
-  // Regenerate single scene artwork
+  // Regenerate single scene
   const handleRegenerateScene = async (index) => {
     const updated = [...scenes];
     const newSeed = Math.floor(Math.random() * 999999);
-    const newUrl = buildAiImageUrl(updated[index].prompt, selectedStyle, newSeed);
+    const newUrl =
+      engineMode === 'pollinations' && pollinationsKey.trim()
+        ? buildPollinationsImageUrl(updated[index].prompt, selectedStyle, newSeed)
+        : null;
     updated[index] = { ...updated[index], seed: newSeed, imageUrl: newUrl, videoUrl: null };
     setScenes(updated);
-    setGenerationStatus(`Refreshing artwork for Scene ${index + 1}...`);
-    await preloadImage(newUrl);
-    setGenerationStatus('');
+    if (newUrl) {
+      setGenerationStatus(`Refreshing artwork for Scene ${index + 1}...`);
+      await preloadSafeBlobImage(newUrl);
+      setGenerationStatus('');
+    }
   };
 
-  // Draw a single frame onto the HTML5 Canvas (supports AI Images with Ken Burns motion + Petals/Particles + Procedural Fallback)
+  // Rich, Self-Contained Animated Scene Renderer (100% CORS-Safe, Never Black)
+  const drawBuiltInAnimatedScene = (ctx, width, height, scene, localTimeSec, sceneIndex) => {
+    const pText = (scene?.prompt || prompt || '').toLowerCase();
+    const isBlossom = /cherry|blossom|flower|petal|spring|sakura|park|garden/i.test(pText);
+    const hasPerson = /girl|woman|boy|man|person|walk|character|hero|child/i.test(pText);
+    const isNightOrCyber = /cyberpunk|night|neon|space|moon|dark|city/i.test(pText + ' ' + selectedStyle);
+    const progress = Math.min(1, Math.max(0, localTimeSec / Math.max(1, scene?.duration || 6)));
+
+    // 1. Sky Gradient based on prompt/style
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    if (isNightOrCyber) {
+      sky.addColorStop(0, '#090d16');
+      sky.addColorStop(0.55, '#1e1b4b');
+      sky.addColorStop(1, '#311042');
+    } else if (isBlossom) {
+      sky.addColorStop(0, '#fbcfe8');
+      sky.addColorStop(0.45, '#fde68a');
+      sky.addColorStop(1, '#fed7aa');
+    } else {
+      sky.addColorStop(0, '#1e3a8a');
+      sky.addColorStop(0.55, '#6d28d9');
+      sky.addColorStop(1, '#f97316');
+    }
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Soft Sun / Moon Halo
+    const sunX = width * 0.68 - progress * 20;
+    const sunY = height * 0.28 + Math.sin(localTimeSec * 0.5) * 4;
+    const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 170);
+    sunGlow.addColorStop(0, 'rgba(255, 251, 235, 0.95)');
+    sunGlow.addColorStop(0.35, isBlossom ? 'rgba(251, 207, 232, 0.55)' : 'rgba(251, 146, 60, 0.45)');
+    sunGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = sunGlow;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, 170, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 3. Distant Hills & Park Pathway
+    ctx.fillStyle = isNightOrCyber ? '#111827' : isBlossom ? '#86efac' : '#1e293b';
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    ctx.lineTo(0, height * 0.68);
+    ctx.quadraticCurveTo(width * 0.3, height * 0.56, width * 0.62, height * 0.67);
+    ctx.quadraticCurveTo(width * 0.85, height * 0.6, width, height * 0.68);
+    ctx.lineTo(width, height);
+    ctx.closePath();
+    ctx.fill();
+
+    // Foreground Grass / Ground
+    ctx.fillStyle = isNightOrCyber ? '#0f172a' : isBlossom ? '#4ade80' : '#0f172a';
+    ctx.fillRect(0, height * 0.72, width, height * 0.28);
+
+    // Winding Park Path
+    ctx.fillStyle = isBlossom ? '#fef3c7' : '#334155';
+    ctx.beginPath();
+    ctx.moveTo(width * 0.15, height);
+    ctx.quadraticCurveTo(width * 0.48, height * 0.82, width * 0.62, height * 0.72);
+    ctx.lineTo(width * 0.72, height * 0.72);
+    ctx.quadraticCurveTo(width * 0.65, height * 0.84, width * 0.48, height);
+    ctx.closePath();
+    ctx.fill();
+
+    // 4. Cherry Blossom / Park Trees with Gentle Breeze Sway
+    const sway = Math.sin(localTimeSec * 1.8) * 6;
+    const drawTree = (tx, ty, scale, canopyColor) => {
+      ctx.save();
+      ctx.translate(tx, ty);
+      // Trunk
+      ctx.fillStyle = '#4a2c2a';
+      ctx.fillRect(-8 * scale, -130 * scale, 16 * scale, 130 * scale);
+      // Branches
+      ctx.strokeStyle = '#4a2c2a';
+      ctx.lineWidth = 6 * scale;
+      ctx.beginPath();
+      ctx.moveTo(0, -90 * scale);
+      ctx.lineTo(-42 * scale + sway * 0.4, -145 * scale);
+      ctx.moveTo(0, -100 * scale);
+      ctx.lineTo(45 * scale + sway * 0.4, -150 * scale);
+      ctx.stroke();
+
+      // Blossom Canopy Clusters
+      const clusters = [
+        [-45 * scale + sway, -155 * scale, 52 * scale],
+        [42 * scale + sway, -150 * scale, 56 * scale],
+        [0 + sway, -185 * scale, 64 * scale],
+        [-20 * scale + sway, -135 * scale, 44 * scale],
+        [26 * scale + sway, -132 * scale, 46 * scale]
+      ];
+      clusters.forEach(([cx, cy, r], idx) => {
+        ctx.fillStyle = idx % 2 === 0 ? canopyColor : '#fbcfe8';
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    };
+
+    if (isBlossom || !isNightOrCyber) {
+      const leafColor = isBlossom ? '#f472b6' : '#10b981';
+      drawTree(width * 0.16, height * 0.75, 1.15, leafColor);
+      drawTree(width * 0.84, height * 0.76, 1.25, leafColor);
+      drawTree(width * 0.48, height * 0.72, 0.65, leafColor);
+    }
+
+    // 5. Animated Walking Character (when prompt describes a girl/person walking)
+    if (hasPerson) {
+      const walkX = width * 0.34 + progress * (width * 0.28);
+      const bobY = Math.abs(Math.sin(localTimeSec * 5.2)) * 5;
+      const walkY = height * 0.83 - bobY;
+      const stride = Math.sin(localTimeSec * 5.2) * 10;
+
+      ctx.save();
+      ctx.translate(walkX, walkY);
+
+      // Shadow
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, 26 + bobY, 18, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Legs
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-4, 2);
+      ctx.lineTo(-4 + stride, 24);
+      ctx.moveTo(4, 2);
+      ctx.lineTo(4 - stride, 24);
+      ctx.stroke();
+
+      // Flowing Dress / Coat
+      ctx.fillStyle = isBlossom ? '#ec4899' : '#6366f1';
+      ctx.beginPath();
+      ctx.moveTo(-9, -24);
+      ctx.lineTo(9, -24);
+      ctx.lineTo(16 + sway * 0.3, 6);
+      ctx.lineTo(-16 + sway * 0.3, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      // Head & Flowing Hair
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath();
+      ctx.arc(0, -34, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#1e1b4b';
+      ctx.beginPath();
+      ctx.arc(-2, -35, 10, Math.PI * 0.75, Math.PI * 2.15);
+      ctx.lineTo(-14 + sway * 0.5, -16);
+      ctx.lineTo(-5, -26);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // 6. Drifting Cherry Blossom Petals / Atmospheric Particles
+    const particleCount = isBlossom ? 38 : 20;
+    for (let p = 0; p < particleCount; p++) {
+      const speedY = 26 + (p % 5) * 10;
+      const driftX = 24 + (p % 4) * 12;
+      const px = ((p * 97 + localTimeSec * driftX + Math.sin(localTimeSec * 1.7 + p) * 28) % (width + 40)) - 20;
+      const py = ((p * 61 + localTimeSec * speedY) % (height + 40)) - 20;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(localTimeSec * 1.6 + p);
+      ctx.fillStyle = isBlossom ? 'rgba(255, 228, 238, 0.9)' : 'rgba(255, 255, 255, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, isBlossom ? 5.5 : 3, isBlossom ? 3.2 : 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 7. Subtle Scene Badge
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.62)';
+    ctx.fillRect(16, 16, 200, 28);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '600 11px Inter, system-ui, sans-serif';
+    ctx.fillText(`SCENE ${sceneIndex + 1} • ${selectedStyle.toUpperCase()}`, 26, 34);
+  };
+
+  // Master Frame Drawer (Draws AI Image if loaded, otherwise Built-In Animated Scene)
   const drawFrameToCanvas = (ctx, width, height, scene, localTimeSec, sceneIndex) => {
     ctx.clearRect(0, 0, width, height);
-
     const img = scene?.imageUrl ? loadedImagesRef.current[scene.imageUrl] : null;
     const progress = Math.min(1, Math.max(0, localTimeSec / Math.max(1, scene?.duration || 6)));
 
     if (img && img.complete && img.naturalWidth > 0) {
-      // Smooth Ken Burns cinematic pan & zoom over the AI-generated illustration
       const zoom = 1.0 + progress * 0.12;
       const panX = (sceneIndex % 2 === 0 ? -1 : 1) * progress * 24;
       const panY = -progress * 12;
-
       const drawW = width * zoom;
       const drawH = height * zoom;
-      const offsetX = (width - drawW) / 2 + panX;
-      const offsetY = (height - drawH) / 2 + panY;
+      ctx.drawImage(img, (width - drawW) / 2 + panX, (height - drawH) / 2 + panY, drawW, drawH);
 
-      ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
-
-      // Subtle atmospheric particles (e.g., cherry blossom petals or dust motes)
-      const isBlossom = /cherry|blossom|flower|petal|spring|sakura/i.test(scene.prompt);
-      const particleCount = isBlossom ? 28 : 14;
-      for (let p = 0; p < particleCount; p++) {
-        const speed = 28 + (p % 5) * 11;
-        const px = ((p * 97 + localTimeSec * (18 + (p % 4) * 9) + Math.sin(localTimeSec * 1.5 + p) * 25) % (width + 40)) - 20;
-        const py = ((p * 61 + localTimeSec * speed) % (height + 40)) - 20;
-        ctx.save();
-        ctx.translate(px, py);
-        ctx.rotate(localTimeSec * 1.4 + p);
-        ctx.fillStyle = isBlossom ? 'rgba(255, 214, 231, 0.82)' : 'rgba(255, 255, 255, 0.28)';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, isBlossom ? 5 : 2.5, isBlossom ? 3 : 2.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.62)';
+      ctx.fillRect(16, 16, 200, 28);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '600 11px Inter, system-ui, sans-serif';
+      ctx.fillText(`SCENE ${sceneIndex + 1} • ${selectedStyle.toUpperCase()}`, 26, 34);
     } else {
-      // Procedural gradient + landscape fallback while AI image loads
-      const grad = ctx.createLinearGradient(0, 0, width, height);
-      grad.addColorStop(0, '#1e1b4b');
-      grad.addColorStop(0.5, '#6b21a8');
-      grad.addColorStop(1, '#ea580c');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, width, height);
-
-      // Sun / Moon glow
-      const sunX = width * 0.32 + progress * 25;
-      const sunY = height * 0.42 - progress * 10;
-      const sunGlow = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, 130);
-      sunGlow.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
-      sunGlow.addColorStop(0.4, 'rgba(251, 146, 60, 0.45)');
-      sunGlow.addColorStop(1, 'rgba(251, 146, 60, 0)');
-      ctx.fillStyle = sunGlow;
-      ctx.beginPath();
-      ctx.arc(sunX, sunY, 130, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Silhouetted hills
-      ctx.fillStyle = '#18181b';
-      ctx.beginPath();
-      ctx.moveTo(0, height);
-      ctx.lineTo(0, height * 0.72);
-      ctx.quadraticCurveTo(width * 0.28, height * 0.52, width * 0.55, height * 0.76);
-      ctx.quadraticCurveTo(width * 0.8, height * 0.58, width, height * 0.74);
-      ctx.lineTo(width, height);
-      ctx.closePath();
-      ctx.fill();
-
-      // Falling petals
-      for (let p = 0; p < 24; p++) {
-        const px = ((p * 83 + localTimeSec * 32 + Math.sin(localTimeSec * 2 + p) * 18) % width);
-        const py = ((p * 53 + localTimeSec * 45) % height);
-        ctx.fillStyle = 'rgba(255, 228, 230, 0.75)';
-        ctx.beginPath();
-        ctx.ellipse(px, py, 4, 2.5, localTimeSec + p, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      drawBuiltInAnimatedScene(ctx, width, height, scene, localTimeSec, sceneIndex);
     }
-
-    // Subtle top badge overlay
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
-    ctx.fillRect(16, 16, 190, 28);
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '600 11px Inter, system-ui, sans-serif';
-    ctx.fillText(`SCENE ${sceneIndex + 1} • ${selectedStyle.toUpperCase()}`, 26, 34);
   };
 
   // Animation loop for interactive preview
@@ -371,7 +518,7 @@ export default function App() {
     const ctx = canvas.getContext('2d');
 
     if (!isPlaying) {
-      drawFrameToCanvas(ctx, canvas.width, canvas.height, scenes[activeSceneIdx] || scenes[0], 0.5, activeSceneIdx);
+      drawFrameToCanvas(ctx, canvas.width, canvas.height, scenes[activeSceneIdx] || scenes[0], 1.2, activeSceneIdx);
       return;
     }
 
@@ -422,10 +569,9 @@ export default function App() {
     setRenderProgress(0);
     setRenderedVideoUrl(null);
 
-    // Ensure all scene images are preloaded before recording
     for (let i = 0; i < scenes.length; i++) {
       if (scenes[i].imageUrl && !loadedImagesRef.current[scenes[i].imageUrl]) {
-        await preloadImage(scenes[i].imageUrl);
+        await preloadSafeBlobImage(scenes[i].imageUrl);
       }
     }
 
@@ -455,7 +601,6 @@ export default function App() {
 
     recorder.start();
 
-    // Cap real-time export duration to max 30s if user picked multi-minute storyboard so browser doesn't freeze
     const rawTotal = scenes.reduce((sum, s) => sum + (s.duration || 6), 0);
     const scaleFactor = rawTotal > 30 ? 30 / rawTotal : 1;
     const renderTotalSec = rawTotal * scaleFactor;
@@ -516,7 +661,8 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-bold text-center text-white mb-2">My AI Video Studio</h1>
           <p className="text-sm text-slate-400 text-center mb-6">
-            Enter your Owner PIN to unlock video generation (Default PIN: <span className="text-indigo-400 font-mono">2026</span>)
+            Enter your Owner PIN to unlock video generation (Default PIN:{' '}
+            <span className="text-indigo-400 font-mono">2026</span>)
           </p>
           <form
             onSubmit={(e) => {
@@ -619,7 +765,9 @@ export default function App() {
             <p className="text-slate-200 font-medium truncate">
               {engineMode === 'fal-video' && falApiKey
                 ? 'Fal.ai Cloud Video'
-                : 'AI Storyboard + Motion'}
+                : engineMode === 'pollinations' && pollinationsKey
+                ? 'Pollinations AI (gen)'
+                : 'Built-In Scene Studio'}
             </p>
           </div>
           <button
@@ -645,7 +793,8 @@ export default function App() {
                   <Wand2 className="w-4 h-4 text-indigo-400" /> Prompt & Generation Settings
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Describe your scene in detail. Click <strong className="text-indigo-300">Generate AI Visuals</strong> to create scene artwork or video clips.
+                  Describe your scene in detail. Click{' '}
+                  <strong className="text-indigo-300">Generate AI Video & Scenes</strong> to animate and export.
                 </p>
               </div>
 
@@ -802,7 +951,6 @@ export default function App() {
                     <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
                       <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
                       <p className="text-sm font-semibold text-white">{generationStatus}</p>
-                      <p className="text-xs text-slate-400 mt-1">Creating high-resolution visuals from your prompt...</p>
                     </div>
                   )}
                 </div>
@@ -847,7 +995,9 @@ export default function App() {
                     </div>
                     <a
                       href={renderedVideoUrl}
-                      download={`${(projectTitle || 'ai-video-studio').toLowerCase().replace(/\s+/g, '-')}.${renderExtension}`}
+                      download={`${(projectTitle || 'ai-video-studio')
+                        .toLowerCase()
+                        .replace(/\s+/g, '-')}.${renderExtension}`}
                       className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition"
                     >
                       <Download className="w-3.5 h-3.5" /> Download Video (.{renderExtension.toUpperCase()})
@@ -863,16 +1013,20 @@ export default function App() {
                   <button
                     onClick={() => {
                       const seed = Math.floor(Math.random() * 999999);
+                      const imageUrl =
+                        engineMode === 'pollinations' && pollinationsKey.trim()
+                          ? buildPollinationsImageUrl(prompt, selectedStyle, seed)
+                          : null;
                       const newScene = {
                         id: Date.now(),
                         duration: 6,
                         prompt: `${prompt}, ${selectedStyle} style`,
-                        imageUrl: buildAiImageUrl(prompt, selectedStyle, seed),
+                        imageUrl,
                         videoUrl: null,
                         seed
                       };
                       setScenes([...scenes, newScene]);
-                      preloadImage(newScene.imageUrl);
+                      if (imageUrl) preloadSafeBlobImage(imageUrl);
                     }}
                     className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition"
                   >
@@ -898,7 +1052,7 @@ export default function App() {
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => handleRegenerateScene(idx)}
-                            title="Regenerate AI Image"
+                            title="Regenerate Scene"
                             className="p-1 text-slate-400 hover:text-indigo-400"
                           >
                             <RefreshCw className="w-3.5 h-3.5" />
@@ -939,26 +1093,17 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex gap-3 items-center">
-                        {scene.imageUrl && (
-                          <img
-                            src={scene.imageUrl}
-                            alt={`Scene ${idx + 1}`}
-                            className="w-20 h-12 object-cover rounded-lg border border-slate-700 shrink-0 bg-slate-900"
-                          />
-                        )}
-                        <input
-                          type="text"
-                          value={scene.prompt}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const copy = [...scenes];
-                            copy[idx].prompt = e.target.value;
-                            setScenes(copy);
-                          }}
-                          className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
+                      <input
+                        type="text"
+                        value={scene.prompt}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const copy = [...scenes];
+                          copy[idx].prompt = e.target.value;
+                          setScenes(copy);
+                        }}
+                        className="w-full bg-[#111827] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                      />
                     </div>
                   ))}
                 </div>
@@ -995,7 +1140,10 @@ export default function App() {
             <button
               onClick={() => {
                 if (!newCharName.trim() || !newCharDesc.trim()) return;
-                setCharacters([...characters, { id: Date.now(), name: newCharName.trim(), description: newCharDesc.trim() }]);
+                setCharacters([
+                  ...characters,
+                  { id: Date.now(), name: newCharName.trim(), description: newCharDesc.trim() }
+                ]);
                 setNewCharName('');
                 setNewCharDesc('');
               }}
@@ -1006,7 +1154,10 @@ export default function App() {
 
             <div className="space-y-2.5">
               {characters.map((c) => (
-                <div key={c.id} className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 flex items-center justify-between">
+                <div
+                  key={c.id}
+                  className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 flex items-center justify-between"
+                >
                   <div>
                     <p className="text-sm font-semibold text-indigo-300">{c.name}</p>
                     <p className="text-xs text-slate-400">{c.description}</p>
@@ -1028,7 +1179,9 @@ export default function App() {
           <div className="max-w-4xl mx-auto bg-[#111827] border border-slate-800 rounded-2xl p-6 space-y-5">
             <h2 className="text-lg font-bold text-white">Saved Video Projects</h2>
             {savedProjects.length === 0 ? (
-              <p className="text-sm text-slate-400">No saved projects yet. Click "Save Project" in Create Video to store your storyboards.</p>
+              <p className="text-sm text-slate-400">
+                No saved projects yet. Click "Save Project" in Create Video to store your storyboards.
+              </p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {savedProjects.map((proj) => (
@@ -1039,14 +1192,18 @@ export default function App() {
                     </div>
                     <p className="text-xs text-slate-400 line-clamp-2">{proj.prompt}</p>
                     <div className="flex items-center justify-between pt-2">
-                      <span className="text-[11px] text-indigo-400">{proj.scenes.length} Scenes • {proj.style}</span>
+                      <span className="text-[11px] text-indigo-400">
+                        {proj.scenes.length} Scenes • {proj.style}
+                      </span>
                       <button
                         onClick={() => {
                           setProjectTitle(proj.title);
                           setPrompt(proj.prompt);
                           setSelectedStyle(proj.style);
                           setScenes(proj.scenes);
-                          proj.scenes.forEach((s) => preloadImage(s.imageUrl));
+                          proj.scenes.forEach((s) => {
+                            if (s.imageUrl) preloadSafeBlobImage(s.imageUrl);
+                          });
                           setActiveTab('create');
                         }}
                         className="px-3 py-1 rounded-lg bg-indigo-600 text-xs font-semibold text-white"
@@ -1066,52 +1223,93 @@ export default function App() {
           <div className="max-w-3xl mx-auto bg-[#111827] border border-slate-800 rounded-2xl p-6 space-y-6">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-indigo-400" /> AI Video & Image Generation Engine
+                <Cpu className="w-5 h-5 text-indigo-400" /> AI Video & Scene Generation Engine
               </h2>
               <p className="text-xs text-slate-400 mt-1">
-                Choose between free built-in AI scene artwork with camera motion, or connect a Cloud Video API key for full text-to-video diffusion.
+                Use the built-in CORS-safe animated scene studio (no API key required) or connect a Pollinations / Fal.ai key for cloud AI diffusion.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
-                onClick={() => setEngineMode('ai-storyboard')}
+                onClick={() => setEngineMode('built-in')}
                 className={`p-4 rounded-xl border text-left transition ${
-                  engineMode === 'ai-storyboard'
+                  engineMode === 'built-in' ? 'bg-indigo-600/15 border-indigo-500' : 'bg-[#0b0f19] border-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-semibold text-xs text-white mb-1">
+                  <Sparkles className="w-4 h-4 text-indigo-400" /> Built-In Animated Studio
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  100% browser-rendered animated scenes with walking character, trees & petals. Zero-key & never black-screens.
+                </p>
+              </button>
+
+              <button
+                onClick={() => setEngineMode('pollinations')}
+                className={`p-4 rounded-xl border text-left transition ${
+                  engineMode === 'pollinations'
                     ? 'bg-indigo-600/15 border-indigo-500'
                     : 'bg-[#0b0f19] border-slate-800'
                 }`}
               >
-                <div className="flex items-center gap-2 font-semibold text-sm text-white mb-1">
-                  <ImageIcon className="w-4 h-4 text-indigo-400" /> Free AI Artwork + Motion (Default)
+                <div className="flex items-center gap-2 font-semibold text-xs text-white mb-1">
+                  <ImageIcon className="w-4 h-4 text-sky-400" /> Pollinations API (gen)
                 </div>
-                <p className="text-xs text-slate-400">
-                  Generates custom AI illustrations for every prompt scene with smooth Ken Burns camera motion & particle effects. No API key required.
+                <p className="text-[11px] text-slate-400">
+                  Connect your key from enter.pollinations.ai to generate custom Flux / Z-Image AI artwork per scene.
                 </p>
               </button>
 
               <button
                 onClick={() => setEngineMode('fal-video')}
                 className={`p-4 rounded-xl border text-left transition ${
-                  engineMode === 'fal-video'
-                    ? 'bg-indigo-600/15 border-indigo-500'
-                    : 'bg-[#0b0f19] border-slate-800'
+                  engineMode === 'fal-video' ? 'bg-indigo-600/15 border-indigo-500' : 'bg-[#0b0f19] border-slate-800'
                 }`}
               >
-                <div className="flex items-center gap-2 font-semibold text-sm text-white mb-1">
-                  <VideoIcon className="w-4 h-4 text-emerald-400" /> Cloud AI Video (Fal.ai API)
+                <div className="flex items-center gap-2 font-semibold text-xs text-white mb-1">
+                  <VideoIcon className="w-4 h-4 text-emerald-400" /> Fal.ai Cloud Video
                 </div>
-                <p className="text-xs text-slate-400">
-                  Connect your Fal.ai API key to generate true neural text-to-video clips (Wan 2.1, Minimax, Luma) directly from Vercel.
+                <p className="text-[11px] text-slate-400">
+                  Connect a Fal.ai API key for full neural text-to-video clips (Wan 2.1, MiniMax, Luma).
                 </p>
               </button>
             </div>
+
+            {engineMode === 'pollinations' && (
+              <div className="p-4 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-sky-400" /> Pollinations API Key (from enter.pollinations.ai)
+                  </label>
+                  <input
+                    type="password"
+                    value={pollinationsKey}
+                    onChange={(e) => setPollinationsKey(e.target.value)}
+                    placeholder="sk_..."
+                    className="w-full bg-[#111827] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Image Model</label>
+                  <select
+                    value={pollinationsModel}
+                    onChange={(e) => setPollinationsModel(e.target.value)}
+                    className="w-full bg-[#111827] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white"
+                  >
+                    <option value="flux">FLUX Schnell (Fast)</option>
+                    <option value="tongyi-mai/z-image-turbo">Z-Image Turbo</option>
+                    <option value="seedream">Seedream</option>
+                  </select>
+                </div>
+              </div>
+            )}
 
             {engineMode === 'fal-video' && (
               <div className="p-4 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-indigo-400" /> Fal.ai API Key
+                    <Key className="w-3.5 h-3.5 text-emerald-400" /> Fal.ai API Key
                   </label>
                   <input
                     type="password"
@@ -1128,7 +1326,7 @@ export default function App() {
                     onChange={(e) => setFalModel(e.target.value)}
                     className="w-full bg-[#111827] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white"
                   >
-                    <option value="fal-ai/wan-t2v">Wan 2.1 Text-to-Video (Fast & High Quality)</option>
+                    <option value="fal-ai/wan-t2v">Wan 2.1 Text-to-Video</option>
                     <option value="fal-ai/minimax-video">MiniMax Hailuo Video-01</option>
                     <option value="fal-ai/luma-dream-machine">Luma Dream Machine</option>
                   </select>
